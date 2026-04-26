@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo init *)",
+      "Bash(where.exe cargo *)",
+      "Bash(cargo build *)",
+      "Bash(D:/rust/Cargo/bin/cargo.exe build *)",
+      "Bash(D:/rust/Cargo/bin/rustup.exe default *)",
+      "Bash(unzip -l NotoSansTC.zip)",
+      "Bash(D:/rust/Cargo/bin/cargo.exe run *)",
+      "Bash(timeout 5 ./target/release/video-thumb-viewer.exe)",
+      "Bash(cargo check *)",
+      "Bash(cargo run *)",
+      "Bash(tasklist)",
+      "Bash(taskkill /F /IM video-thumb-viewer.exe)"
+    ]
+  }
+}

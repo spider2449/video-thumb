@@ -1,0 +1,39 @@
+[package]
+name = "video-thumb-viewer"
+version = "0.1.0"
+edition = "2021"
+description = "A video thumbnail viewer with SQLite storage"
+authors = ["You"]
+
+[dependencies]
+# GUI framework
+eframe = "0.31"
+egui = "0.31"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Image processing
+image = "0.25"
+
+# Utilities
+md5 = "0.7"
+walkdir = "2.5"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "6.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# File dialog
+rfd = "0.15"
+
+[profile.release]
+opt-level = 3
+lto = true

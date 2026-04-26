@@ -1,0 +1,87 @@
+mod app;
+mod db;
+mod scanner;
+mod thumbnail;
+mod ui;
+
+use app::App;
+use eframe::egui;
+use log::{error, info, warn};
+use std::panic;
+
+fn main() -> Result<(), eframe::Error> {
+    // Initialize logger first
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
+    info!("Starting Video Thumb Viewer");
+
+    // Set panic hook to log panics
+    panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let message = panic_info.payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| panic_info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "Unknown panic".to_string());
+        error!("PANIC at {}: {}", location, message);
+    }));
+
+    let native_options = eframe::NativeOptions::default();
+
+    eframe::run_native(
+        "Video Thumb Viewer",
+        native_options,
+        Box::new(|cc| {
+            info!("Setting up fonts...");
+            setup_fonts(&cc.egui_ctx);
+
+            info!("Creating app...");
+            let app = App::new(cc);
+            info!("App created successfully");
+            Ok(Box::new(app) as Box<dyn eframe::App>)
+        }),
+    )
+}
+
+fn setup_fonts(ctx: &egui::Context) {
+    info!("Loading fonts...");
+
+    let mut fonts = egui::FontDefinitions::default();
+
+    // Try to load Noto Sans TC font
+    match std::fs::read("assets/NotoSansTC-Regular.otf") {
+        Ok(font_data) => {
+            info!("Font file loaded: {} bytes", font_data.len());
+            fonts.font_data.insert(
+                "NotoSansTC".to_string(),
+                egui::FontData::from_owned(font_data).into(),
+            );
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "NotoSansTC".to_string());
+            info!("Font registered as NotoSansTC");
+        }
+        Err(e) => {
+            warn!("Failed to load font from file: {}", e);
+            // Try include_bytes as fallback
+            fonts.font_data.insert(
+                "NotoSansTC".to_string(),
+                egui::FontData::from_owned(include_bytes!("../assets/NotoSansTC-Regular.otf").to_vec()).into(),
+            );
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "NotoSansTC".to_string());
+        }
+    }
+
+    ctx.set_fonts(fonts);
+    info!("Fonts setup complete");
+}
