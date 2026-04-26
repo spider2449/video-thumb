@@ -12,7 +12,10 @@
       "Bash(cargo check *)",
       "Bash(cargo run *)",
       "Bash(tasklist)",
-      "Bash(taskkill /F /IM video-thumb-viewer.exe)"
+      "Bash(taskkill /F /IM video-thumb-viewer.exe)",
+      "Bash(git checkout *)",
+      "Bash(grep *)",
+      "Bash(unset GIT_CONFIG)"
     ]
   }
 }

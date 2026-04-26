@@ -32,7 +32,7 @@ impl ContextMenu {
         let file_for_remove = file.clone();
         let file_for_capture = file.clone();
 
-        egui::Area::new(egui::Id::new("context_menu"))
+        let area_response = egui::Area::new(egui::Id::new("context_menu"))
             .fixed_pos(self.click_pos)
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style())
@@ -125,6 +125,15 @@ impl ContextMenu {
                         }
                     });
             });
+
+        // Close on left-click outside the menu area
+        if ctx.input(|i| i.pointer.primary_clicked()) {
+            if let Some(pointer_pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                if !area_response.response.rect.contains(pointer_pos) {
+                    self.file = None;
+                }
+            }
+        }
 
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.file = None;
@@ -315,9 +324,7 @@ fn get_ffmpeg_path() -> Option<PathBuf> {
 }
 
 fn get_data_dir() -> std::path::PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("video-thumb-viewer")
+    crate::app::get_data_dir()
 }
 
 fn parse_time_string(time: &str) -> Option<f64> {

@@ -315,7 +315,29 @@ impl MainWindow {
                     let path = std::path::PathBuf::from(thumb_path);
                     if path.exists() {
                         if let Some(tex) = Self::load_tex(ctx, &path) {
-                            let img_rect = egui::Rect::from_min_size(thumb_rect.rect.min, thumb_rect.rect.size());
+                            let tex_size = tex.size_vec2();
+                            let container_size = thumb_rect.rect.size();
+
+                            // Calculate aspect-ratio-preserving size
+                            let aspect_tex = tex_size.x / tex_size.y;
+                            let aspect_container = container_size.x / container_size.y;
+
+                            let (draw_w, draw_h) = if aspect_tex > aspect_container {
+                                // Texture is wider than container - fit to width
+                                let h = container_size.x / aspect_tex;
+                                (container_size.x, h)
+                            } else {
+                                // Texture is taller than container - fit to height
+                                let w = container_size.y * aspect_tex;
+                                (w, container_size.y)
+                            };
+
+                            // Center the image within the container
+                            let offset_x = (container_size.x - draw_w) / 2.0;
+                            let offset_y = (container_size.y - draw_h) / 2.0;
+                            let img_min = thumb_rect.rect.min + egui::Vec2::new(offset_x, offset_y);
+                            let img_rect = egui::Rect::from_min_size(img_min, egui::Vec2::new(draw_w, draw_h));
+
                             ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max([0.0, 0.0].into(), [1.0, 1.0].into()), egui::Color32::WHITE);
                         }
                     } else {

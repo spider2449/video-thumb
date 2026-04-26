@@ -248,7 +248,5 @@ fn get_ffmpeg_path() -> Option<PathBuf> {
 }
 
 fn get_data_dir() -> std::path::PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("video-thumb-viewer")
+    crate::app::get_data_dir()
 }

@@ -55,9 +55,7 @@ impl Default for SortBy {
 }
 
 pub fn get_data_dir() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("video-thumb-viewer")
+    crate::config::Config::load().get_data_dir()
 }
 
 impl App {
@@ -228,7 +226,7 @@ impl App {
         self.add_path_error = None;
     }
 
-    fn update_impl(&mut self, ctx: &egui::Context) {
+    fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check for scan completion
         if let Some(rx) = self.scan_complete_rx.take() {
             if let Ok(result) = rx.try_recv() {
@@ -250,7 +248,12 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.update_impl(ctx);
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.update_impl(ctx, frame);
     }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Window state will be saved via store_to_db call if available
+    }
+
 }

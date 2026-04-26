@@ -1,8 +1,14 @@
 mod app;
+mod config;
 mod db;
 mod scanner;
 mod thumbnail;
 mod ui;
+
+/// Get the effective data directory from config
+pub fn get_data_dir() -> std::path::PathBuf {
+    config::Config::load().get_data_dir()
+}
 
 use app::App;
 use eframe::egui;
@@ -30,7 +36,23 @@ fn main() -> Result<(), eframe::Error> {
         error!("PANIC at {}: {}", location, message);
     }));
 
-    let native_options = eframe::NativeOptions::default();
+    // Load window state from config
+    let config = config::Config::load();
+    let window_state = config.get_window_state();
+
+    let viewport = egui::ViewportBuilder::default()
+        .with_inner_size([window_state.width, window_state.height]);
+
+    let viewport = if let (Some(x), Some(y)) = (window_state.x, window_state.y) {
+        viewport.with_position(egui::Pos2::new(x, y))
+    } else {
+        viewport
+    };
+
+    let native_options = eframe::NativeOptions {
+        viewport,
+        ..Default::default()
+    };
 
     eframe::run_native(
         "Video Thumb Viewer",

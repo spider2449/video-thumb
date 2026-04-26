@@ -1,7 +1,6 @@
 use crate::app::App;
 use crate::db::FileEntry;
 use eframe::egui;
-use std::cell::Cell;
 use std::path::PathBuf;
 
 pub struct ScreenshotDialog {
@@ -32,10 +31,10 @@ impl ScreenshotDialog {
     }
 
     fn get_video_duration(video_path: &str) -> Option<f64> {
-        // Use ffprobe to get duration
-        let ffmpeg_path = Self::get_ffmpeg()?;
+        // Use ffprobe to get duration - try to find ffprobe next to ffmpeg
+        let ffprobe_path = Self::get_ffprobe()?;
 
-        let output = std::process::Command::new(&ffmpeg_path)
+        let output = std::process::Command::new(&ffprobe_path)
             .args(["-v", "error"])
             .args(["-show_entries", "format=duration"])
             .args(["-of", "default=noprint_wrappers=1:nokey=1"])
@@ -45,6 +44,30 @@ impl ScreenshotDialog {
 
         let duration_str = String::from_utf8_lossy(&output.stdout);
         duration_str.trim().parse::<f64>().ok()
+    }
+
+    fn get_ffprobe() -> Option<PathBuf> {
+        let data_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("video-thumb-viewer");
+        let ffmpeg_dir = data_dir.join("ffmpeg");
+
+        #[cfg(target_os = "windows")]
+        {
+            let path = ffmpeg_dir.join("ffprobe.exe");
+            if path.exists() { return Some(path); }
+            if std::process::Command::new("where").arg("ffprobe").output()
+                .map(|o| o.status.success()).unwrap_or(false) {
+                return Some(PathBuf::from("ffprobe"));
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let path = ffmpeg_dir.join("ffprobe");
+            if path.exists() { return Some(path); }
+            return Some(PathBuf::from("ffprobe"));
+        }
+        None
     }
 
     fn get_ffmpeg() -> Option<PathBuf> {
@@ -73,88 +96,101 @@ impl ScreenshotDialog {
 
     /// Returns true to keep dialog open
     pub fn show(&mut self, ctx: &egui::Context, app: &mut App) -> bool {
-        let open = Cell::new(true);
-        let capture = Cell::new(false);
+        let close_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let capture_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // Clone for use inside closure
+        let close_clone = close_requested.clone();
+        let capture_clone = capture_requested.clone();
 
         egui::Window::new("截圖 - 選擇時間點")
-        .open(&mut open.get())
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ctx, |ui| {
-            ui.set_width(400.0);
+            .collapsible(false)
+            .resizable(true)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_size([600.0, 500.0])
+            .min_size([500.0, 450.0])
+            .show(ctx, |ui| {
+                let _available_width = ui.available_width();
 
-            // Preview area
-            ui.group(|ui| {
-                ui.set_min_height(200.0);
+                // Preview area
+                ui.group(|ui| {
+                    ui.set_min_height(200.0);
 
-                // Show preview or loading indicator
-                if let Some(texture) = &self.preview_texture {
-                    let size = egui::Vec2::new(
-                        self.thumbnail_size[0] as f32,
-                        self.thumbnail_size[1] as f32,
-                    );
-                    let available_rect = ui.available_rect_before_wrap();
-                    let img_pos = available_rect.center() - (size / 2.0);
-                    ui.put(
-                        egui::Rect::from_min_size(img_pos, size),
-                        egui::Image::new(texture).fit_to_exact_size(size),
-                    );
-                } else if self.is_loading {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("載入中...");
-                    });
-                } else {
-                    ui.centered_and_justified(|ui| {
-                        ui.label("拖動時間軸預覽");
-                    });
-                }
-            });
-
-            ui.add_space(8.0);
-
-            // Timeline slider
-            let prev_time = self.current_time;
-            ui.horizontal(|ui| {
-                ui.label("時間:");
-                ui.add(
-                    egui::Slider::new(&mut self.current_time, 0.0..=self.total_duration)
-                    .show_value(false),
-                );
-            });
-
-            // Time display
-            let mins = (self.current_time / 60.0) as u32;
-            let secs = (self.current_time % 60.0) as u32;
-            let frames = (self.current_time * 30.0) as u32; // Approximate 30fps
-            ui.label(format!("{:02}:{:02} (約 {} 帧)", mins, secs, frames));
-
-            // Update preview if time changed significantly
-            if (self.current_time - prev_time).abs() > 0.1 {
-                self.update_preview(ctx);
-            }
-
-            ui.add_space(16.0);
-
-            // Buttons
-            ui.horizontal(|ui| {
-                if ui.button("取消").clicked() {
-                    open.set(false);
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("截圖").clicked() {
-                        capture.set(true);
-                        open.set(false);
+                    // Show preview or loading indicator
+                    if let Some(texture) = &self.preview_texture {
+                        let size = egui::Vec2::new(
+                            self.thumbnail_size[0] as f32,
+                            self.thumbnail_size[1] as f32,
+                        );
+                        let available_rect = ui.available_rect_before_wrap();
+                        let img_pos = available_rect.center() - (size / 2.0);
+                        ui.put(
+                            egui::Rect::from_min_size(img_pos, size),
+                            egui::Image::new(texture).fit_to_exact_size(size),
+                        );
+                    } else if self.is_loading {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("載入中...");
+                        });
+                    } else {
+                        ui.centered_and_justified(|ui| {
+                            ui.label("拖動時間軸預覽");
+                        });
                     }
                 });
-            });
-        });
 
-        if capture.get() {
+                ui.add_space(8.0);
+
+                // Timeline slider - full video duration, full width
+                let prev_time = self.current_time;
+                ui.label(format!("時間: {:?}", self.current_time));
+                ui.add(
+                    egui::Slider::new(&mut self.current_time, 0.0..=self.total_duration)
+                        .show_value(true)
+                        .text("時間軸"),
+                );
+
+                // Time display
+                let total_mins = (self.total_duration / 60.0) as u32;
+                let total_secs = (self.total_duration % 60.0) as u32;
+                let mins = (self.current_time / 60.0) as u32;
+                let secs = (self.current_time % 60.0) as u32;
+                ui.horizontal(|ui| {
+                    ui.label(format!("當前: {:02}:{:02}", mins, secs));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(format!("總長: {:02}:{:02}", total_mins, total_secs));
+                    });
+                });
+
+                // Update preview if time changed significantly
+                if (self.current_time - prev_time).abs() > 0.1 {
+                    self.update_preview(ctx);
+                }
+
+                ui.add_space(16.0);
+
+                // Buttons
+                ui.horizontal(|ui| {
+                    if ui.button("取消").clicked() {
+                        close_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("截圖").clicked() {
+                            capture_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                            close_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    });
+                });
+            });
+
+        let capture = capture_requested.load(std::sync::atomic::Ordering::Relaxed);
+        let close = close_requested.load(std::sync::atomic::Ordering::Relaxed);
+
+        if capture {
             self.capture_screenshot(app);
         }
 
-        open.get()
+        !close
     }
 
     fn update_preview(&mut self, ctx: &egui::Context) {
