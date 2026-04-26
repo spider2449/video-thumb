@@ -180,6 +180,14 @@ impl MainWindow {
         }
     }
 
+    // Screenshot dialog
+    if let Some(mut dialog) = app.screenshot_dialog.take() {
+        let keep_open = dialog.show(ctx, app);
+        if keep_open {
+            app.screenshot_dialog = Some(dialog);
+        }
+    }
+
     // Status bar
         egui::TopBottomPanel::bottom("status_bar")
             .show(ctx, |ui| {

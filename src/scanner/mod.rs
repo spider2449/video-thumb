@@ -72,7 +72,7 @@ impl Scanner {
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        Some(FileEntry {
+        let mut file_entry = FileEntry {
             id: 0,
             path_id,
             file_path: file_path.to_string_lossy().to_string(),
@@ -84,7 +84,45 @@ impl Scanner {
             rating: 0,
             has_custom_thumb: false,
             created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        })
+        };
+
+        // Generate thumbnail at frame 300
+        if let Some(ffmpeg_path) = Self::get_ffmpeg() {
+            let data_dir = crate::app::get_data_dir();
+            let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
+            match gen.generate_thumbnail_at_frame(&file_entry.file_path, 300) {
+                Ok(thumb_path) => {
+                    file_entry.thumbnail_path = Some(thumb_path);
+                }
+                Err(e) => {
+                    log::warn!("Failed to generate thumbnail for {}: {}", file_entry.file_path, e);
+                }
+            }
+        }
+
+        Some(file_entry)
+    }
+
+    fn get_ffmpeg() -> Option<std::path::PathBuf> {
+        let data_dir = crate::app::get_data_dir();
+        let ffmpeg_dir = data_dir.join("ffmpeg");
+
+        #[cfg(target_os = "windows")]
+        {
+            let path = ffmpeg_dir.join("ffmpeg.exe");
+            if path.exists() { return Some(path); }
+            if std::process::Command::new("where").arg("ffmpeg").output()
+                .map(|o| o.status.success()).unwrap_or(false) {
+                return Some(std::path::PathBuf::from("ffmpeg"));
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let path = ffmpeg_dir.join("ffmpeg");
+            if path.exists() { return Some(path); }
+            return Some(std::path::PathBuf::from("ffmpeg"));
+        }
+        None
     }
 }
 

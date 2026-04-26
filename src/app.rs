@@ -33,6 +33,7 @@ pub struct App {
     pub settings_dialog: Option<SettingsDialog>,
     pub tag_manager: Option<TagManager>,
     pub context_menu: Option<crate::ui::ContextMenu>,
+    pub screenshot_dialog: Option<crate::ui::ScreenshotDialog>,
 }
 
 pub struct ScanResult {
@@ -97,6 +98,7 @@ impl App {
         settings_dialog: None,
         tag_manager: None,
         context_menu: None,
+        screenshot_dialog: None,
         };
 
         if app.watched_paths.is_empty() {

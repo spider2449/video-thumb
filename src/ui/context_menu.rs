@@ -93,13 +93,11 @@ impl ContextMenu {
 
                         ui.separator();
 
-                        ui.horizontal(|ui| {
-                            ui.label("時間:");
-                            ui.text_edit_singleline(&mut self.time_input);
-                            if ui.button("截圖").clicked() {
-                                self.capture_screenshot_internal(&file_for_capture, app);
-                            }
-                        });
+    if ui.button("📷 截圖...").clicked() {
+        app.screenshot_dialog = Some(crate::ui::ScreenshotDialog::new(file_for_capture));
+        self.file = None; // Close context menu
+    }
+
 
                         ui.separator();
 
