@@ -154,7 +154,7 @@ impl App {
         }
 
         match self.sort_by {
-            SortBy::Name => files.sort_by(|a, b| a.file_name.cmp(&b.file_name)),
+            SortBy::Name => files.sort_by(|a, b| a.file_path.cmp(&b.file_path)),
             SortBy::Date => files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at)),
             SortBy::Rating => files.sort_by(|a, b| b.rating.cmp(&a.rating)),
         }

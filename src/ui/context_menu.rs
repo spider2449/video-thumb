@@ -79,24 +79,41 @@ impl ContextMenu {
                             });
                         }
 
-                        ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut self.add_tag_name);
-                            if ui.button("+").clicked() {
-                                self.add_tag_internal(file_id, app);
-                            }
-                        });
+                        // ComboBox to select existing tags
+                        let available_tags: Vec<_> = app.tags.iter()
+                            .filter(|t| !file_tags.iter().any(|ft| ft.id == t.id))
+                            .collect();
 
-                        if ui.button("🏷️ 新增標籤...").clicked() {
+                        if !available_tags.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.label("新增:");
+                                egui::ComboBox::from_id_salt("add_tag_combo")
+                                    .width(120.0)
+                                    .selected_text("選擇標籤")
+                                    .show_ui(ui, |ui| {
+                                        for tag in available_tags {
+                                            let color = self.hex_to_color(&tag.color);
+                                            if ui.selectable_label(false, egui::RichText::new(&tag.name).color(color)).clicked() {
+                                                app.db.blocking_lock()
+                                                    .add_tag_to_file(file_id, tag.id)
+                                                    .ok();
+                                            }
+                                        }
+                                    });
+                            });
+                        }
+
+                        if ui.button("🏷️ 管理標籤...").clicked() {
                             app.show_tag_manager = true;
                             self.file = None;
                         }
 
                         ui.separator();
 
-    if ui.button("📷 截圖...").clicked() {
-        app.screenshot_dialog = Some(crate::ui::ScreenshotDialog::new(file_for_capture));
-        self.file = None; // Close context menu
-    }
+                        if ui.button("📷 截圖...").clicked() {
+                            app.screenshot_dialog = Some(crate::ui::ScreenshotDialog::new(file_for_capture));
+                            self.file = None; // Close context menu
+                        }
 
 
                         ui.separator();
@@ -301,9 +318,7 @@ fn get_ffmpeg_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let path = ffmpeg_dir.join("ffmpeg.exe");
-        if path.exists() {
-            return Some(path);
-        }
+        if path.exists() { return Some(path); }
 
         std::process::Command::new("where")
             .arg("ffmpeg")
@@ -316,9 +331,7 @@ fn get_ffmpeg_path() -> Option<PathBuf> {
     #[cfg(not(target_os = "windows"))]
     {
         let path = ffmpeg_dir.join("ffmpeg");
-        if path.exists() {
-            return Some(path);
-        }
+        if path.exists() { return Some(path); }
         Some(PathBuf::from("ffmpeg"))
     }
 }

@@ -19,7 +19,7 @@ impl MainWindow {
         // Toolbar
         egui::TopBottomPanel::top("toolbar")
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("+ 新增路徑").clicked() {
                         app.show_add_path = true;
                         app.reset_add_path_dialog();
@@ -85,7 +85,7 @@ impl MainWindow {
                             }
                             for tag in &app.tags {
                                 let color = Self::hex_to_color(&tag.color);
-                                ui.colored_label(color, &tag.name);
+                                let is_selected = app.tag_filter == Some(tag.id); if ui.selectable_label(is_selected, egui::RichText::new(&tag.name).color(color)).clicked() { app.tag_filter = Some(tag.id); ui.close_menu(); }
                             }
                         });
                         ui.separator();
@@ -108,8 +108,8 @@ impl MainWindow {
         // Tab bar
         egui::TopBottomPanel::top("tab_bar")
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    egui::ScrollArea::horizontal()
+                ui.horizontal_wrapped(|ui| {
+                    egui::ScrollArea::vertical()
                         .drag_to_scroll(false)
                         .show(ui, |ui| {
                             let paths_snapshot: Vec<_> = app.watched_paths.clone();
@@ -191,7 +191,7 @@ impl MainWindow {
     // Status bar
         egui::TopBottomPanel::bottom("status_bar")
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let files = app.get_current_files();
                     ui.label(format!("共 {} 個檔案", files.len()));
                     if app.scanning {
@@ -214,7 +214,7 @@ impl MainWindow {
                 .show(ctx, |ui| {
                     ui.set_width(400.0);
 
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("資料夾路徑:");
                         ui.text_edit_singleline(&mut app.add_path_path);
                         if ui.button("選擇...").clicked() {
@@ -231,7 +231,7 @@ impl MainWindow {
                     });
 
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("顯示名稱:");
                         ui.text_edit_singleline(&mut app.add_path_display_name);
                     });
@@ -242,7 +242,7 @@ impl MainWindow {
                     }
 
                     ui.add_space(16.0);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("取消").clicked() {
                             app.show_add_path = false;
                             app.reset_add_path_dialog();
@@ -357,9 +357,11 @@ impl MainWindow {
                     );
                 }
 
-                ui.label(egui::RichText::new(Self::trunc_name(&file.file_name, 20)).size(12.0).color(egui::Color32::WHITE));
+                // Show full path under thumbnail
+            let path_text = Self::trunc_name(&file.file_path, 50);
+            ui.label(egui::RichText::new(path_text).size(10.0).color(egui::Color32::LIGHT_GRAY));
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for star in 1..=5 {
                         let color = if star <= file.rating { egui::Color32::from_rgb(255, 200, 0) } else { egui::Color32::from_gray(80) };
                         ui.label(egui::RichText::new(if star <= file.rating { "★" } else { "☆" }).color(color).size(14.0));

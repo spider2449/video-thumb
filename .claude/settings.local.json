@@ -15,7 +15,8 @@
       "Bash(taskkill /F /IM video-thumb-viewer.exe)",
       "Bash(git checkout *)",
       "Bash(grep *)",
-      "Bash(unset GIT_CONFIG)"
+      "Bash(unset GIT_CONFIG)",
+      "Bash(xxd -l 200 -s +5800 src/ui/main_window.rs)"
     ]
   }
 }
