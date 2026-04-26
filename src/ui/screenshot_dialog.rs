@@ -2,6 +2,9 @@ use crate::app::App;
 use crate::db::FileEntry;
 use eframe::egui;
 use std::path::PathBuf;
+use std::time::Instant;
+
+const DEBOUNCE_MS: u128 = 100;
 
 pub struct ScreenshotDialog {
     pub file: FileEntry,
@@ -10,6 +13,8 @@ pub struct ScreenshotDialog {
     pub preview_texture: Option<egui::TextureHandle>,
     pub is_loading: bool,
     pub thumbnail_size: [u32; 2],
+    pub last_update_time: Instant,
+    pub last_preview_time: f64,  // Time shown in current preview
 }
 
 impl ScreenshotDialog {
@@ -27,6 +32,8 @@ impl ScreenshotDialog {
             preview_texture: None,
             is_loading: false,
             thumbnail_size: [320, 180],
+            last_update_time: Instant::now(),
+            last_preview_time: -1.0,  // No preview yet
         }
     }
 
@@ -162,10 +169,19 @@ impl ScreenshotDialog {
                     });
                 });
 
-                // Update preview if time changed significantly
-                if (self.current_time - prev_time).abs() > 0.1 {
-                    self.update_preview(ctx);
-                }
+        // Debounced preview update
+        let time_changed_significantly = (self.current_time - prev_time).abs() > 0.001;
+        if time_changed_significantly {
+            self.last_update_time = Instant::now();
+        }
+
+        // Update preview after debounce period when time has settled
+        let elapsed = self.last_update_time.elapsed().as_millis();
+        let preview_pending = (self.current_time - self.last_preview_time).abs() > 0.001;
+        if elapsed >= DEBOUNCE_MS && !self.is_loading && preview_pending {
+            self.update_preview(ctx);
+            self.last_preview_time = self.current_time;
+        }
 
                 ui.add_space(16.0);
 
@@ -261,6 +277,8 @@ impl ScreenshotDialog {
                 log::error!("Failed to generate preview: {}", e);
             }
         }
+        // Ensure temp file is always cleaned up
+        let _ = std::fs::remove_file(&temp_path);
 
         self.is_loading = false;
     }
@@ -312,6 +330,8 @@ impl Default for ScreenshotDialog {
             preview_texture: None,
             is_loading: false,
             thumbnail_size: [320, 180],
+            last_update_time: Instant::now(),
+            last_preview_time: -1.0,
         }
     }
 }
