@@ -34,6 +34,8 @@ pub struct App {
     pub tag_manager: Option<TagManager>,
     pub context_menu: Option<crate::ui::ContextMenu>,
     pub screenshot_dialog: Option<crate::ui::ScreenshotDialog>,
+    // Remove path confirmation dialog
+    pub remove_path_confirm: Option<(i64, String)>, // (path_id, display_name)
 }
 
 pub struct ScanResult {
@@ -94,9 +96,10 @@ impl App {
             add_path_display_name: String::new(),
             add_path_error: None,
         settings_dialog: None,
-        tag_manager: None,
-        context_menu: None,
-        screenshot_dialog: None,
+            tag_manager: None,
+            context_menu: None,
+            screenshot_dialog: None,
+            remove_path_confirm: None,
         };
 
         if app.watched_paths.is_empty() {

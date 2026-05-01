@@ -16,8 +16,21 @@ impl Database {
 
     pub fn remove_path(&self, path_id: i64) -> SqliteResult<()> {
         info!("Removing watched path: {}", path_id);
-        self.conn
-            .execute("DELETE FROM watched_paths WHERE id = ?1", [path_id])?;
+        let tx = self.conn.unchecked_transaction()?;
+
+        // Delete file_tag associations for files in this path
+        tx.execute(
+            "DELETE FROM file_tags WHERE file_id IN (SELECT id FROM files WHERE path_id = ?1)",
+            [path_id],
+        )?;
+
+        // Delete files for this path
+        tx.execute("DELETE FROM files WHERE path_id = ?1", [path_id])?;
+
+        // Delete the watched path
+        tx.execute("DELETE FROM watched_paths WHERE id = ?1", [path_id])?;
+
+        tx.commit()?;
         Ok(())
     }
 

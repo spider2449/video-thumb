@@ -113,7 +113,6 @@ impl MainWindow {
                         .drag_to_scroll(false)
                         .show(ui, |ui| {
                             let paths_snapshot: Vec<_> = app.watched_paths.clone();
-                            let mut close_request: Option<i64> = None;
                             for path in &paths_snapshot {
                                 let selected = app.current_path_id == Some(path.id);
                                 let button = egui::Button::new(&path.display_name).selected(selected);
@@ -127,21 +126,7 @@ impl MainWindow {
 
                                 if selected {
                                     if ui.button("×").clicked() {
-                                        close_request = app.current_path_id;
-                                    }
-                                }
-                            }
-
-                            if let Some(id) = close_request {
-                                let db = app.db.blocking_lock();
-                                let should_remove = db.remove_path(id).is_ok();
-                                drop(db);
-                                if should_remove {
-                                    app.watched_paths.retain(|p| p.id != id);
-                                    app.files.remove(&id);
-                                    app.current_path_id = app.watched_paths.first().map(|p| p.id);
-                                    if let Some(new_id) = app.current_path_id {
-                                        app.load_files_for_path(new_id);
+                                        app.remove_path_confirm = Some((path.id, path.display_name.clone()));
                                     }
                                 }
                             }
@@ -185,6 +170,47 @@ impl MainWindow {
         let keep_open = dialog.show(ctx, app);
         if keep_open {
             app.screenshot_dialog = Some(dialog);
+        }
+    }
+
+    // Remove path confirmation dialog
+    if let Some((path_id, display_name)) = app.remove_path_confirm.take() {
+        let mut keep_open = true;
+        egui::Window::new("確認移除路徑")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.set_width(300.0);
+                ui.add_space(8.0);
+                ui.label(format!("確定要移除「{}」嗎？", display_name));
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("（只會移除記錄，不會刪除檔案）").small().color(egui::Color32::GRAY));
+                ui.add_space(16.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("確認移除").clicked() {
+                            let db = app.db.blocking_lock();
+                            let should_remove = db.remove_path(path_id).is_ok();
+                            drop(db);
+                            if should_remove {
+                                app.watched_paths.retain(|p| p.id != path_id);
+                                app.files.remove(&path_id);
+                                app.current_path_id = app.watched_paths.first().map(|p| p.id);
+                                if let Some(new_id) = app.current_path_id {
+                                    app.load_files_for_path(new_id);
+                                }
+                            }
+                            keep_open = false;
+                        }
+                        if ui.button("取消").clicked() {
+                            keep_open = false;
+                        }
+                    });
+                });
+            });
+        if keep_open {
+            app.remove_path_confirm = Some((path_id, display_name));
         }
     }
 
@@ -358,8 +384,7 @@ impl MainWindow {
                 }
 
                 // Show full path under thumbnail
-            let path_text = Self::trunc_name(&file.file_path, 50);
-            ui.label(egui::RichText::new(path_text).size(10.0).color(egui::Color32::LIGHT_GRAY));
+                ui.label(egui::RichText::new(&file.file_path).size(10.0).color(egui::Color32::LIGHT_GRAY));
 
                 ui.horizontal_wrapped(|ui| {
                     for star in 1..=5 {
@@ -500,26 +525,6 @@ impl MainWindow {
             let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
             egui::Color32::from_rgb(r, g, b)
         } else { egui::Color32::GRAY }
-    }
-
-    fn trunc_name(name: &str, max: usize) -> String {
-        if name.chars().count() <= max { name.to_string() }
-        else {
-            let ext = std::path::Path::new(name).extension()
-                .map(|e| e.len())
-                .unwrap_or(0);
-            let char_count = name.chars().count();
-            let n = max.saturating_sub(ext + 4);
-
-            if n > 0 && ext > 0 {
-                let prefix: String = name.chars().take(n).collect();
-                let suffix_start = char_count.saturating_sub(ext);
-                let suffix: String = name.chars().skip(suffix_start).collect();
-                format!("{}...{}", prefix, suffix)
-            } else {
-                name.chars().take(max).collect::<String>() + "..."
-            }
-        }
     }
 
     fn get_data_dir() -> std::path::PathBuf {
