@@ -21,3 +21,4 @@ target/
 #.idea/
 ffmpeg/ffmpeg.exe
 ffmpeg/ffprobe.exe
+.claude/settings.local.json

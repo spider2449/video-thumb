@@ -144,7 +144,7 @@ impl App {
 
         if !self.search_query.is_empty() {
             let query = self.search_query.to_lowercase();
-            files.retain(|f| f.file_name.to_lowercase().contains(&query));
+            files.retain(|f| f.file_path.to_lowercase().contains(&query));
         }
 
         if let Some(rating) = self.rating_filter {
