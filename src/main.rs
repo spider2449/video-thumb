@@ -33,6 +33,7 @@ pub fn get_data_dir() -> std::path::PathBuf {
 }
 
 use app::App;
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 use eframe::egui;
 use log::{error, info, warn};
 use std::panic;
@@ -77,7 +78,7 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Video Thumb Viewer",
+        &format!("Video Thumb Viewer v{}", VERSION),
         native_options,
         Box::new(|cc| {
             info!("Setting up fonts...");
