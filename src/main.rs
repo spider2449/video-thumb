@@ -5,6 +5,28 @@ mod scanner;
 mod thumbnail;
 mod ui;
 
+#[cfg(target_os = "windows")]
+fn toggle_console_window(show: bool) {
+    #[link(name = "user32")]
+    extern "system" {
+        fn ShowWindow(hwnd: *mut std::ffi::c_void, nCmdShow: i32) -> i32;
+        fn GetConsoleWindow() -> *mut std::ffi::c_void;
+    }
+
+    const SW_HIDE: i32 = 0;
+    const SW_SHOW: i32 = 5;
+
+    unsafe {
+        let hwnd = GetConsoleWindow();
+        if !hwnd.is_null() {
+            ShowWindow(hwnd, if show { SW_SHOW } else { SW_HIDE });
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn toggle_console_window(_show: bool) {}
+
 /// Get the effective data directory from config
 pub fn get_data_dir() -> std::path::PathBuf {
     config::Config::load().get_data_dir()

@@ -36,6 +36,8 @@ pub struct App {
     pub screenshot_dialog: Option<crate::ui::ScreenshotDialog>,
     // Remove path confirmation dialog
     pub remove_path_confirm: Option<(i64, String)>, // (path_id, display_name)
+    // Console visibility (for F12 toggle)
+    pub console_visible: bool,
 }
 
 pub struct ScanResult {
@@ -100,6 +102,7 @@ impl App {
             context_menu: None,
             screenshot_dialog: None,
             remove_path_confirm: None,
+            console_visible: true,
         };
 
         if app.watched_paths.is_empty() {
@@ -230,6 +233,12 @@ impl App {
     }
 
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Toggle console with F12
+        if ctx.input(|i| i.key_pressed(egui::Key::F12)) {
+            self.console_visible = !self.console_visible;
+            crate::toggle_console_window(self.console_visible);
+        }
+
         // Check for scan completion
         if let Some(rx) = self.scan_complete_rx.take() {
             if let Ok(result) = rx.try_recv() {
