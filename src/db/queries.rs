@@ -164,6 +164,15 @@ impl Database {
             .execute("DELETE FROM files WHERE id = ?1", [file_id])?;
         Ok(())
     }
+
+    pub fn move_file(&self, file_id: i64, new_path_id: i64, new_file_path: &str) -> SqliteResult<()> {
+        info!("Moving file {} to path_id={}, new_path={}", file_id, new_path_id, new_file_path);
+        self.conn.execute(
+            "UPDATE files SET path_id = ?1, file_path = ?2 WHERE id = ?3",
+            params![new_path_id, new_file_path, file_id],
+        )?;
+        Ok(())
+    }
 }
 
 // ============ Tags ============
