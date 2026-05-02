@@ -115,6 +115,29 @@ impl ContextMenu {
                             self.file = None; // Close context menu
                         }
 
+                        ui.separator();
+
+                        // Move to tab submenu
+                        let other_tabs: Vec<(i64, String, String)> = app.watched_paths.iter()
+                            .filter(|p| p.id != file.path_id)
+                            .map(|p| (p.id, p.path.clone(), p.display_name.clone()))
+                            .collect();
+
+                        if !other_tabs.is_empty() {
+                            ui.collapsing("➡️ 移到其他標籤頁", |ui| {
+                                for (dest_id, dest_path, dest_name) in &other_tabs {
+                                    if ui.button(dest_name).clicked() {
+                                        // Compute new file path in destination directory
+                                        let new_path = std::path::PathBuf::from(dest_path)
+                                            .join(&file.file_name);
+                                        let new_path_str = new_path.to_string_lossy().to_string();
+                                        self.move_file_to_tab_internal(&file, *dest_id, &new_path_str, app);
+                                    }
+                                }
+                            });
+                        } else {
+                            ui.label("沒有其他標籤頁");
+                        }
 
                         ui.separator();
 
@@ -290,6 +313,46 @@ impl ContextMenu {
         }
 
         self.file = None;
+    }
+
+    fn move_file_to_tab_internal(&mut self, file: &FileEntry, new_path_id: i64, new_file_path: &str, app: &mut App) {
+        let source_path = std::path::PathBuf::from(&file.file_path);
+        let dest_path = std::path::PathBuf::from(new_file_path);
+
+        // Try direct rename first (same drive)
+        let move_result = std::fs::rename(&source_path, &dest_path);
+
+        // If cross-drive, copy then delete
+        let move_result = move_result.or_else(|_| {
+            std::fs::copy(&source_path, &dest_path)
+                .and_then(|_| std::fs::remove_file(&source_path))
+        });
+
+        match move_result {
+            Ok(_) => {
+                // Update database
+                app.db.blocking_lock()
+                    .move_file(file.id, new_path_id, new_file_path)
+                    .ok();
+
+                // Refresh files in current tab (remove the moved file)
+                if let Some(path_id) = app.current_path_id {
+                    if let Ok(files) = app.db.blocking_lock().get_files_for_path(path_id) {
+                        app.files.insert(path_id, files);
+                    }
+                }
+
+                // Refresh destination tab if it's loaded
+                if let Ok(files) = app.db.blocking_lock().get_files_for_path(new_path_id) {
+                    app.files.insert(new_path_id, files);
+                }
+
+                self.file = None;
+            }
+            Err(e) => {
+                log::error!("Failed to move file: {}", e);
+            }
+        }
     }
 
     fn hex_to_color(&self, hex: &str) -> egui::Color32 {
