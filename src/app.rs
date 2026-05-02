@@ -38,6 +38,8 @@ pub struct App {
     pub remove_path_confirm: Option<(i64, String)>, // (path_id, display_name)
     // Console visibility (for F12 toggle)
     pub console_visible: bool,
+    // Theme storage
+    pub current_theme: String,
 }
 
 pub struct ScanResult {
@@ -103,6 +105,7 @@ impl App {
             screenshot_dialog: None,
             remove_path_confirm: None,
             console_visible: true,
+            current_theme: "dark".to_string(),
         };
 
         if app.watched_paths.is_empty() {
@@ -232,7 +235,26 @@ impl App {
         self.add_path_error = None;
     }
 
+    pub fn apply_theme(&self, ctx: &egui::Context) {
+        if self.current_theme == "light" {
+            ctx.set_visuals(egui::Visuals::light());
+        } else {
+            ctx.set_visuals(egui::Visuals::dark());
+        }
+    }
+
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Load and apply theme on first frame
+        if self.current_theme == "dark" {
+            let db_guard = self.db.blocking_lock();
+            self.current_theme = db_guard.get_setting("theme")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "dark".to_string());
+            drop(db_guard);
+            self.apply_theme(ctx);
+        }
+
         // Toggle console with F12
         if ctx.input(|i| i.key_pressed(egui::Key::F12)) {
             self.console_visible = !self.console_visible;
