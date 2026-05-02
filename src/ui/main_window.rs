@@ -98,6 +98,26 @@ impl MainWindow {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text("大小"));
                         ui.separator();
+
+                        // Theme toggle button
+                        let theme_icon = if app.current_theme == "light" { "☽" } else { "☀" };
+                        if ui.button(theme_icon).clicked() {
+                            app.current_theme = if app.current_theme == "light" {
+                                "dark".to_string()
+                            } else {
+                                "light".to_string()
+                            };
+                            // Apply theme immediately
+                            if app.current_theme == "light" {
+                                ctx.set_visuals(egui::Visuals::light());
+                            } else {
+                                ctx.set_visuals(egui::Visuals::dark());
+                            }
+                            // Save preference
+                            let db = app.db.blocking_lock();
+                            let _ = db.set_setting("theme", &app.current_theme);
+                        }
+
                         if ui.button("⚙️ 設定").clicked() {
                             app.show_settings = true;
                         }
