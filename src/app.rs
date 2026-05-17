@@ -255,30 +255,44 @@ impl App {
         self.thumbnail_progress = Some((0, total));
         self.scan_status = format!("生成縮圖中... 0/{}", total);
 
+        // Drop any orphaned channels from previous generation
+        self.thumb_progress_rx = None;
+        self.thumb_done_rx = None;
+
         // Store channels for polling
         self.thumb_progress_rx = Some(progress_rx);
         self.thumb_done_rx = Some(done_rx);
 
         std::thread::spawn(move || {
-            if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
-                let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
-                for (i, file_path) in files.iter().enumerate() {
-                    match gen.generate_thumbnail_at_frame(file_path, 300) {
-                        Ok(thumb_path) => {
+            let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
+                log::error!("ffmpeg not found, skipping thumbnail generation");
+                let _ = done_tx.send(path_id);
+                return;
+            };
+            let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
+
+            // Build path->id map once to avoid O(n²) lookups
+            let db_guard = db.blocking_lock();
+            let path_to_id: std::collections::HashMap<String, i64> = if let Ok(all_files) = db_guard.get_files_for_path(path_id) {
+                all_files.into_iter().map(|f| (f.file_path, f.id)).collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+            drop(db_guard);
+
+            for (i, file_path) in files.iter().enumerate() {
+                match gen.generate_thumbnail_at_frame(file_path, 300) {
+                    Ok(thumb_path) => {
+                        if let Some(&file_id) = path_to_id.get(file_path) {
                             let db_guard = db.blocking_lock();
-                            // Find file by path to get its ID
-                            if let Ok(all_files) = db_guard.get_files_for_path(path_id) {
-                                if let Some(file) = all_files.iter().find(|f| f.file_path == *file_path) {
-                                    let _ = db_guard.update_thumbnail(file.id, &thumb_path);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!("Failed to generate thumbnail for {}: {}", file_path, e);
+                            let _ = db_guard.update_thumbnail(file_id, &thumb_path);
                         }
                     }
-                    let _ = progress_tx.send(i + 1);
+                    Err(e) => {
+                        log::warn!("Failed to generate thumbnail for {}: {}", file_path, e);
+                    }
                 }
+                let _ = progress_tx.send(i + 1);
             }
             let _ = done_tx.send(path_id);
         });
