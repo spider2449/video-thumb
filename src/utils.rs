@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 /// Get the effective data directory from config or system default
 pub fn get_data_dir() -> PathBuf {
-    crate::config::Config::load().get_data_dir()
+    let config = crate::config::Config::load();
+    let dir = config.get_data_dir();
+    log::info!("get_data_dir() resolved to: {:?}", dir);
+    dir
 }
 
 /// Find ffmpeg executable: first in data_dir/ffmpeg/, then in PATH
