@@ -126,20 +126,29 @@ impl App {
 
     pub fn load_files_for_path(&mut self, path_id: i64) {
         let db_guard = self.db.blocking_lock();
-        if let Ok(files) = db_guard.get_files_for_path(path_id) {
-            // Clear stale tag map entries for this path's previous files
-            if let Some(old_files) = self.files.get(&path_id) {
-                for file in old_files {
-                    self.file_tag_map.remove(&file.id);
+        match db_guard.get_files_for_path(path_id) {
+            Ok(files) => {
+                log::info!("Loaded {} files for path_id={}", files.len(), path_id);
+                // Clear stale tag map entries for this path's previous files
+                if let Some(old_files) = self.files.get(&path_id) {
+                    for file in old_files {
+                        self.file_tag_map.remove(&file.id);
+                    }
                 }
-            }
-            // Build tag map for cached files
-            for file in &files {
-                if let Ok(tags) = db_guard.get_tags_for_file(file.id) {
-                    self.file_tag_map.insert(file.id, tags.iter().map(|t| t.id).collect());
+                // Build tag map with a single batch query
+                match db_guard.get_all_file_tags(path_id) {
+                    Ok(tag_map) => {
+                        self.file_tag_map.extend(tag_map);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to load file tags: {:?}", e);
+                    }
                 }
+                self.files.insert(path_id, files);
             }
-            self.files.insert(path_id, files);
+            Err(e) => {
+                log::error!("Failed to load files for path_id={}: {:?}", path_id, e);
+            }
         }
     }
 

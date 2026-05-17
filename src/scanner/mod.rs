@@ -55,7 +55,7 @@ impl Scanner {
         }
 
         let db = self.db.lock().await;
-        for file_entry in files {
+        for file_entry in &files {
             if let Err(e) = db.upsert_file(&file_entry) {
                 error!("Failed to insert file: {:?}", e);
             } else {

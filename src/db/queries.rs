@@ -251,6 +251,22 @@ impl Database {
         Ok(tags)
     }
 
+    pub fn get_all_file_tags(&self, path_id: i64) -> SqliteResult<std::collections::HashMap<i64, Vec<i64>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT ft.file_id, ft.tag_id FROM file_tags ft
+             INNER JOIN files f ON f.id = ft.file_id
+             WHERE f.path_id = ?1",
+        )?;
+        let mut map: std::collections::HashMap<i64, Vec<i64>> = std::collections::HashMap::new();
+        let mut rows = stmt.query([path_id])?;
+        while let Some(row) = rows.next()? {
+            let file_id: i64 = row.get(0)?;
+            let tag_id: i64 = row.get(1)?;
+            map.entry(file_id).or_default().push(tag_id);
+        }
+        Ok(map)
+    }
+
     pub fn tag_name_exists(&self, name: &str) -> SqliteResult<bool> {
         let mut stmt = self
             .conn
