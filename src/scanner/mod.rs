@@ -1,6 +1,7 @@
 use crate::db::{Database, FileEntry};
 use chrono::{DateTime, Utc};
 use log::{error, info};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -59,6 +60,26 @@ impl Scanner {
                 error!("Failed to insert file: {:?}", e);
             } else {
                 count += 1;
+            }
+        }
+
+        // Delete records for files that no longer exist on disk
+        let found_paths: HashSet<String> = files.iter()
+            .map(|f| f.file_path.clone())
+            .collect();
+        if let Ok(existing_files) = db.get_files_for_path(path_id) {
+            let mut deleted = 0;
+            for existing in &existing_files {
+                if !found_paths.contains(&existing.file_path) {
+                    if let Err(e) = db.delete_file(existing.id) {
+                        error!("Failed to delete stale record for {}: {:?}", existing.file_path, e);
+                    } else {
+                        deleted += 1;
+                    }
+                }
+            }
+            if deleted > 0 {
+                info!("Deleted {} stale records for files no longer on disk", deleted);
             }
         }
 
