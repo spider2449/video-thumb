@@ -316,6 +316,9 @@ impl ContextMenu {
                 files.retain(|f| f.id != file.id);
             });
 
+        // Clean up tag map
+        app.file_tag_map.remove(&file.id);
+
         if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
             let root_dir = crate::utils::get_data_dir();
             let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
@@ -345,17 +348,11 @@ impl ContextMenu {
                     .move_file(file.id, new_path_id, new_file_path)
                     .ok();
 
-                // Refresh files in current tab (remove the moved file)
-                if let Some(path_id) = app.current_path_id {
-                    if let Ok(files) = app.db.blocking_lock().get_files_for_path(path_id) {
-                        app.files.insert(path_id, files);
-                    }
-                }
+                // Clean up moved file's tag map entry
+                app.file_tag_map.remove(&file.id);
 
-                // Refresh destination tab if it's loaded
-                if let Ok(files) = app.db.blocking_lock().get_files_for_path(new_path_id) {
-                    app.files.insert(new_path_id, files);
-                }
+                // Invalidate cache to trigger reload with correct data
+                app.invalidate_cache();
 
                 self.file = None;
             }

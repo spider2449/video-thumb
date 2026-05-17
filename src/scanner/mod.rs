@@ -40,20 +40,21 @@ impl Scanner {
         .await
         .map_err(|e| format!("task join error: {e}"))?;
 
-        // Insert files into database
+        // Insert files into database (hold lock for entire batch)
         let mut count = 0;
         let mut files_needing_thumbnails = Vec::new();
         let data_dir = crate::utils::get_data_dir();
         let thumbs_dir = data_dir.join("thumbs");
 
-        for file_entry in files {
+        for file_entry in &files {
             let thumb_path = thumbs_dir.join(format!("{:x}.jpg", md5::compute(file_entry.file_path.as_bytes())));
-            let needs_thumb = !thumb_path.exists();
-            if needs_thumb {
+            if !thumb_path.exists() {
                 files_needing_thumbnails.push(file_entry.file_path.clone());
             }
+        }
 
-            let db = self.db.lock().await;
+        let db = self.db.lock().await;
+        for file_entry in files {
             if let Err(e) = db.upsert_file(&file_entry) {
                 error!("Failed to insert file: {:?}", e);
             } else {

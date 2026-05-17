@@ -127,6 +127,12 @@ impl App {
     pub fn load_files_for_path(&mut self, path_id: i64) {
         let db_guard = self.db.blocking_lock();
         if let Ok(files) = db_guard.get_files_for_path(path_id) {
+            // Clear stale tag map entries for this path's previous files
+            if let Some(old_files) = self.files.get(&path_id) {
+                for file in old_files {
+                    self.file_tag_map.remove(&file.id);
+                }
+            }
             // Build tag map for cached files
             for file in &files {
                 if let Ok(tags) = db_guard.get_tags_for_file(file.id) {
@@ -153,7 +159,9 @@ impl App {
         let mut files = if let Some(cached) = self.files.get(&path_id) {
             cached.clone()
         } else {
-            Vec::new()
+            // Fall back to DB on cache miss
+            let db_guard = self.db.blocking_lock();
+            db_guard.get_files_for_path(path_id).unwrap_or_default()
         };
 
         // Apply filters in-memory
@@ -363,12 +371,16 @@ impl App {
 
         // Poll thumbnail progress
         if let Some(rx) = self.thumb_progress_rx.as_ref() {
+            let mut needs_repaint = false;
             while let Ok(completed) = rx.try_recv() {
                 if let Some((_, total)) = self.thumbnail_progress {
                     self.thumbnail_progress = Some((completed, total));
                     self.scan_status = format!("生成縮圖中... {}/{}", completed, total);
-                    ctx.request_repaint();
+                    needs_repaint = true;
                 }
+            }
+            if needs_repaint {
+                ctx.request_repaint();
             }
         }
 
