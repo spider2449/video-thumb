@@ -87,7 +87,7 @@ impl Scanner {
         };
 
         // Generate thumbnail at frame 300
-        if let Some(ffmpeg_path) = Self::get_ffmpeg() {
+        if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
             let data_dir = crate::utils::get_data_dir();
             let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
             match gen.generate_thumbnail_at_frame(&file_entry.file_path, 300) {
@@ -101,28 +101,6 @@ impl Scanner {
         }
 
         Some(file_entry)
-    }
-
-    fn get_ffmpeg() -> Option<std::path::PathBuf> {
-        let data_dir = crate::utils::get_data_dir();
-        let ffmpeg_dir = data_dir.join("ffmpeg");
-
-        #[cfg(target_os = "windows")]
-        {
-            let path = ffmpeg_dir.join("ffmpeg.exe");
-            if path.exists() { return Some(path); }
-            if std::process::Command::new("where").arg("ffmpeg").output()
-                .map(|o| o.status.success()).unwrap_or(false) {
-                return Some(std::path::PathBuf::from("ffmpeg"));
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let path = ffmpeg_dir.join("ffmpeg");
-            if path.exists() { return Some(path); }
-            return Some(std::path::PathBuf::from("ffmpeg"));
-        }
-        None
     }
 }
 

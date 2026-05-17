@@ -66,7 +66,7 @@ impl ContextMenu {
                             .unwrap_or_default();
 
                         for tag in &file_tags {
-                            let color = self.hex_to_color(&tag.color);
+                            let color = crate::utils::hex_to_color(&tag.color);
                             let tag_id = tag.id;
                             let file_id_copy = file_id;
                             ui.horizontal(|ui| {
@@ -92,8 +92,8 @@ impl ContextMenu {
                                     .selected_text("選擇標籤")
                                     .show_ui(ui, |ui| {
                                         for tag in available_tags {
-                                            let color = self.hex_to_color(&tag.color);
-                                            if ui.selectable_label(false, egui::RichText::new(&tag.name).color(color)).clicked() {
+                            let color = crate::utils::hex_to_color(&tag.color);
+                                            if ui.selectable_label(false, egui::RichText::new(&tag.name).color(crate::utils::hex_to_color(&tag.color))).clicked() {
                                                 app.db.blocking_lock()
                                                     .add_tag_to_file(file_id, tag.id)
                                                     .ok();
@@ -181,7 +181,7 @@ impl ContextMenu {
     }
 
     fn play_file_internal(&self, file_path: &str, app: &App) {
-        let Some(ffmpeg_path) = get_ffmpeg_path() else {
+        let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
             log::error!("ffmpeg not found");
             return;
         };
@@ -192,7 +192,7 @@ impl ContextMenu {
             .flatten()
             .unwrap_or_default();
 
-        let root_dir = get_data_dir();
+        let root_dir = crate::utils::get_data_dir();
         let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
         generator.play_video(file_path, &player).ok();
     }
@@ -238,7 +238,7 @@ impl ContextMenu {
     }
 
     fn capture_screenshot_internal(&self, file: &FileEntry, app: &App) {
-        let Some(ffmpeg_path) = get_ffmpeg_path() else {
+        let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
             log::error!("ffmpeg not found");
             return;
         };
@@ -249,7 +249,7 @@ impl ContextMenu {
             self.time_input.parse().unwrap_or(1.0)
         };
 
-        let root_dir = get_data_dir();
+        let root_dir = crate::utils::get_data_dir();
         let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
 
         if let Ok(thumb_path) = generator.generate_thumbnail_at_time(&file.file_path, time_seconds) {
@@ -260,8 +260,8 @@ impl ContextMenu {
     }
 
     fn reset_thumbnail_internal(&self, file: &FileEntry, app: &mut App) {
-        if let Some(ffmpeg_path) = get_ffmpeg_path() {
-            let root_dir = get_data_dir();
+        if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
+            let root_dir = crate::utils::get_data_dir();
             let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
 
             generator.delete_thumbnail(&file.file_path);
@@ -306,8 +306,8 @@ impl ContextMenu {
                 files.retain(|f| f.id != file.id);
             });
 
-        if let Some(ffmpeg_path) = get_ffmpeg_path() {
-            let root_dir = get_data_dir();
+        if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
+            let root_dir = crate::utils::get_data_dir();
             let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
             generator.delete_thumbnail(&file.file_path);
         }
@@ -354,53 +354,12 @@ impl ContextMenu {
             }
         }
     }
-
-    fn hex_to_color(&self, hex: &str) -> egui::Color32 {
-        let hex = hex.trim_start_matches('#');
-        if hex.len() >= 6 {
-            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(128);
-            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(128);
-            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
-            egui::Color32::from_rgb(r, g, b)
-        } else {
-            egui::Color32::GRAY
-        }
-    }
 }
 
 impl Default for ContextMenu {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn get_ffmpeg_path() -> Option<PathBuf> {
-    let root_dir = get_data_dir();
-    let ffmpeg_dir = root_dir.join("ffmpeg");
-
-    #[cfg(target_os = "windows")]
-    {
-        let path = ffmpeg_dir.join("ffmpeg.exe");
-        if path.exists() { return Some(path); }
-
-        std::process::Command::new("where")
-            .arg("ffmpeg")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|_| PathBuf::from("ffmpeg"))
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let path = ffmpeg_dir.join("ffmpeg");
-        if path.exists() { return Some(path); }
-        Some(PathBuf::from("ffmpeg"))
-    }
-}
-
-fn get_data_dir() -> std::path::PathBuf {
-    crate::utils::get_data_dir()
 }
 
 fn parse_time_string(time: &str) -> Option<f64> {

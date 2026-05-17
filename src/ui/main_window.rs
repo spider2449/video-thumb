@@ -84,7 +84,7 @@ impl MainWindow {
                                 ui.close_menu();
                             }
                             for tag in &app.tags {
-                                let color = Self::hex_to_color(&tag.color);
+                                let color = crate::utils::hex_to_color(&tag.color);
                                 let is_selected = app.tag_filter == Some(tag.id); if ui.selectable_label(is_selected, egui::RichText::new(&tag.name).color(color)).clicked() { app.tag_filter = Some(tag.id); ui.close_menu(); }
                             }
                         });
@@ -424,8 +424,8 @@ impl MainWindow {
             let player = app.db.blocking_lock().get_setting("default_player")
                 .ok().flatten().unwrap_or_default();
             let player_str: &str = if player.is_empty() { "" } else { &player };
-            if let Some(ffp) = Self::get_ffmpeg() {
-                let gen = crate::thumbnail::ThumbnailGenerator::new(&Self::get_data_dir(), &ffp);
+            if let Some(ffp) = crate::utils::get_ffmpeg_path() {
+                let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp);
                 if let Err(e) = gen.play_video(&file_path, player_str) {
             log::error!("Failed to play video: {}", e);
         }
@@ -520,36 +520,6 @@ impl MainWindow {
         });
     }
 
-    pub fn get_ffmpeg() -> Option<std::path::PathBuf> {
-        let dir = Self::get_data_dir().join("ffmpeg");
-        #[cfg(target_os = "windows")] {
-            let p = dir.join("ffmpeg.exe");
-            if p.exists() { return Some(p); }
-            if std::process::Command::new("where").arg("ffmpeg").output().map(|o| o.status.success()).unwrap_or(false) {
-                return Some(std::path::PathBuf::from("ffmpeg"));
-            }
-        }
-        #[cfg(not(target_os = "windows"))] {
-            let p = dir.join("ffmpeg");
-            if p.exists() { return Some(p); }
-            return Some(std::path::PathBuf::from("ffmpeg"));
-        }
-        None
-    }
-
-    fn hex_to_color(hex: &str) -> egui::Color32 {
-        let hex = hex.trim_start_matches('#');
-        if hex.len() >= 6 {
-            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(128);
-            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(128);
-            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
-            egui::Color32::from_rgb(r, g, b)
-        } else { egui::Color32::GRAY }
-    }
-
-    fn get_data_dir() -> std::path::PathBuf {
-        dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join("video-thumb-viewer")
-    }
 }
 
 impl Default for MainWindow {

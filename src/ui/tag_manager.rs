@@ -44,7 +44,7 @@ impl TagManager {
                 ui.collapsing("現有標籤", |ui| {
                     let tags_snapshot: Vec<_> = app.tags.clone();
                     for tag in &tags_snapshot {
-                        let color = self.hex_to_color(&tag.color);
+                        let color = crate::utils::hex_to_color(&tag.color);
 
                         ui.horizontal(|ui| {
                             ui.painter().rect_filled(
@@ -126,7 +126,7 @@ impl TagManager {
     fn show_color_presets(&mut self, ui: &mut egui::Ui, is_edit: bool) {
         ui.horizontal_wrapped(|ui| {
             for color in PRESET_COLORS {
-                let c = self.hex_to_color(color);
+                let c = crate::utils::hex_to_color(color);
                 let rect_min = ui.cursor().min;
                 let rect = egui::Rect::from_min_size(rect_min, [20.0, 20.0].into());
 
@@ -185,18 +185,6 @@ impl TagManager {
             Err(e) => {
                 self.error = Some(format!("建立標籤失敗: {}", e));
             }
-        }
-    }
-
-    fn hex_to_color(&self, hex: &str) -> egui::Color32 {
-        let hex = hex.trim_start_matches('#');
-        if hex.len() >= 6 {
-            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(128);
-            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(128);
-            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
-            egui::Color32::from_rgb(r, g, b)
-        } else {
-            egui::Color32::GRAY
         }
     }
 

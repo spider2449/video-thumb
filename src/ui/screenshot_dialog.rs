@@ -39,7 +39,7 @@ impl ScreenshotDialog {
 
     fn get_video_duration(video_path: &str) -> Option<f64> {
         // Use ffprobe to get duration - try to find ffprobe next to ffmpeg
-        let ffprobe_path = Self::get_ffprobe()?;
+        let ffprobe_path = crate::utils::get_ffprobe_path()?;
 
         let output = std::process::Command::new(&ffprobe_path)
             .args(["-v", "error"])
@@ -51,54 +51,6 @@ impl ScreenshotDialog {
 
         let duration_str = String::from_utf8_lossy(&output.stdout);
         duration_str.trim().parse::<f64>().ok()
-    }
-
-    fn get_ffprobe() -> Option<PathBuf> {
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("video-thumb-viewer");
-        let ffmpeg_dir = data_dir.join("ffmpeg");
-
-        #[cfg(target_os = "windows")]
-        {
-            let path = ffmpeg_dir.join("ffprobe.exe");
-            if path.exists() { return Some(path); }
-            if std::process::Command::new("where").arg("ffprobe").output()
-                .map(|o| o.status.success()).unwrap_or(false) {
-                return Some(PathBuf::from("ffprobe"));
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let path = ffmpeg_dir.join("ffprobe");
-            if path.exists() { return Some(path); }
-            return Some(PathBuf::from("ffprobe"));
-        }
-        None
-    }
-
-    fn get_ffmpeg() -> Option<PathBuf> {
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("video-thumb-viewer");
-        let ffmpeg_dir = data_dir.join("ffmpeg");
-
-        #[cfg(target_os = "windows")]
-        {
-            let path = ffmpeg_dir.join("ffmpeg.exe");
-            if path.exists() { return Some(path); }
-            if std::process::Command::new("where").arg("ffmpeg").output()
-                .map(|o| o.status.success()).unwrap_or(false) {
-                return Some(PathBuf::from("ffmpeg"));
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let path = ffmpeg_dir.join("ffmpeg");
-            if path.exists() { return Some(path); }
-            return Some(PathBuf::from("ffmpeg"));
-        }
-        None
     }
 
     /// Returns true to keep dialog open
@@ -215,7 +167,7 @@ impl ScreenshotDialog {
         }
         self.is_loading = true;
 
-        let Some(ffmpeg_path) = Self::get_ffmpeg() else {
+        let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
             log::error!("ffmpeg not found");
             self.is_loading = false;
             return;
@@ -284,7 +236,7 @@ impl ScreenshotDialog {
     }
 
     fn capture_screenshot(&mut self, app: &mut App) {
-        let Some(ffmpeg_path) = Self::get_ffmpeg() else {
+        let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
             log::error!("ffmpeg not found");
             return;
         };
