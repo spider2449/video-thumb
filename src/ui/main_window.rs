@@ -41,14 +41,17 @@ impl MainWindow {
                     ui.menu_button("排序", |ui| {
                         if ui.selectable_label(app.sort_by == SortBy::Name, "名稱").clicked() {
                             app.sort_by = SortBy::Name;
+                            app.invalidate_cache();
                             ui.close_menu();
                         }
                         if ui.selectable_label(app.sort_by == SortBy::Date, "日期").clicked() {
                             app.sort_by = SortBy::Date;
+                            app.invalidate_cache();
                             ui.close_menu();
                         }
                         if ui.selectable_label(app.sort_by == SortBy::Rating, "評分").clicked() {
                             app.sort_by = SortBy::Rating;
+                            app.invalidate_cache();
                             ui.close_menu();
                         }
                     });
@@ -63,12 +66,14 @@ impl MainWindow {
                     ui.menu_button("評分篩選", |ui| {
                         if ui.selectable_label(app.rating_filter.is_none(), "全部").clicked() {
                             app.rating_filter = None;
+                            app.invalidate_cache();
                             ui.close_menu();
                         }
                         for i in 1..=5 {
                             let label = format!("{} 星", i);
                             if ui.selectable_label(app.rating_filter == Some(i), &label).clicked() {
                                 app.rating_filter = Some(i);
+                                app.invalidate_cache();
                                 ui.close_menu();
                             }
                         }
@@ -80,11 +85,18 @@ impl MainWindow {
                         ui.menu_button("標籤篩選", |ui| {
                             if ui.selectable_label(app.tag_filter.is_none(), "全部").clicked() {
                                 app.tag_filter = None;
+                                app.invalidate_cache();
                                 ui.close_menu();
                             }
-                            for tag in &app.tags {
+                            let tags_snapshot: Vec<_> = app.tags.clone();
+                            for tag in &tags_snapshot {
                                 let color = crate::utils::hex_to_color(&tag.color);
-                                let is_selected = app.tag_filter == Some(tag.id); if ui.selectable_label(is_selected, egui::RichText::new(&tag.name).color(color)).clicked() { app.tag_filter = Some(tag.id); ui.close_menu(); }
+                                let is_selected = app.tag_filter == Some(tag.id);
+                                if ui.selectable_label(is_selected, egui::RichText::new(&tag.name).color(color)).clicked() {
+                                    app.tag_filter = Some(tag.id);
+                                    app.invalidate_cache();
+                                    ui.close_menu();
+                                }
                             }
                         });
                         ui.separator();

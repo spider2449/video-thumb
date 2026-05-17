@@ -40,6 +40,7 @@ pub struct App {
     pub remove_path_confirm: Option<(i64, String)>, // (path_id, display_name)
     // Console visibility (for F12 toggle)
     pub console_visible: bool,
+    pub cache_invalidated: bool,
     // Theme storage
     pub current_theme: String,
 }
@@ -104,6 +105,7 @@ impl App {
             screenshot_dialog: None,
             remove_path_confirm: None,
             console_visible: true,
+            cache_invalidated: false,
             current_theme: "dark".to_string(),
             thumbnail_progress: None,
             thumb_progress_rx: None,
@@ -139,11 +141,14 @@ impl App {
             }
         };
 
-        // Always read directly from database to get latest data
-        let db_guard = self.db.blocking_lock();
-        let mut files = db_guard.get_files_for_path(path_id).unwrap_or_default();
-        drop(db_guard);
+        // Get files from cache or DB
+        let mut files = if let Some(cached) = self.files.get(&path_id) {
+            cached.clone()
+        } else {
+            Vec::new()
+        };
 
+        // Apply filters in-memory
         if !self.search_query.is_empty() {
             let query = self.search_query.to_lowercase();
             files.retain(|f| f.file_path.to_lowercase().contains(&query));
@@ -154,14 +159,18 @@ impl App {
         }
 
         if let Some(tag_id) = self.tag_filter {
-            let db_guard = self.db.blocking_lock();
-            files.retain(|f| {
-                if let Ok(tags) = db_guard.get_tags_for_file(f.id) {
-                    tags.iter().any(|t| t.id == tag_id)
-                } else {
-                    false
-                }
-            });
+            // Tag filter still needs DB lookup per file (could be optimized later)
+            // For now, skip if no cache to avoid blocking
+            if self.files.contains_key(&path_id) {
+                let db_guard = self.db.blocking_lock();
+                files.retain(|f| {
+                    if let Ok(tags) = db_guard.get_tags_for_file(f.id) {
+                        tags.iter().any(|t| t.id == tag_id)
+                    } else {
+                        false
+                    }
+                });
+            }
         }
 
         match self.sort_by {
@@ -171,6 +180,19 @@ impl App {
         }
 
         files
+    }
+
+    pub fn invalidate_cache(&mut self) {
+        self.cache_invalidated = true;
+    }
+
+    pub fn refresh_cache_if_needed(&mut self) {
+        if self.cache_invalidated {
+            if let Some(path_id) = self.current_path_id {
+                self.load_files_for_path(path_id);
+            }
+            self.cache_invalidated = false;
+        }
     }
 
     pub fn add_path(&mut self) {
@@ -360,6 +382,8 @@ impl App {
                 self.thumb_done_rx = Some(rx);
             }
         }
+
+        self.refresh_cache_if_needed();
 
         MainWindow::show_main(ctx, self);
     }
