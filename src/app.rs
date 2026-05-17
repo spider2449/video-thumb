@@ -353,11 +353,11 @@ impl App {
                 self.scanning = false;
                 if result.success {
                     self.scan_status = format!("完成！找到 {} 個檔案", result.count);
-                    // Start thumbnail generation in background
+                    // Always reload cache immediately after scan
+                    self.load_files_for_path(result.path_id);
+                    // Start thumbnail generation in background if needed
                     if !result.files_needing_thumbnails.is_empty() {
                         self.start_thumbnail_generation(result.files_needing_thumbnails, result.path_id);
-                    } else {
-                        self.load_files_for_path(result.path_id);
                     }
                 } else {
                     self.scan_status = format!("失敗: {}", result.message);
