@@ -178,9 +178,7 @@ impl ScreenshotDialog {
         let size = self.thumbnail_size;
 
         // Generate preview at current time
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("video-thumb-viewer");
+        let data_dir = crate::utils::get_data_dir();
 
         // Create temp preview file
         let temp_path = data_dir.join(format!("preview_{}.jpg", self.file.id));
@@ -241,9 +239,7 @@ impl ScreenshotDialog {
             return;
         };
 
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("video-thumb-viewer");
+        let data_dir = crate::utils::get_data_dir();
 
         let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
 
