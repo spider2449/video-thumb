@@ -92,7 +92,6 @@ impl ContextMenu {
                                     .selected_text("選擇標籤")
                                     .show_ui(ui, |ui| {
                                         for tag in available_tags {
-                            let color = crate::utils::hex_to_color(&tag.color);
                                             if ui.selectable_label(false, egui::RichText::new(&tag.name).color(crate::utils::hex_to_color(&tag.color))).clicked() {
                                                 app.db.blocking_lock()
                                                     .add_tag_to_file(file_id, tag.id)

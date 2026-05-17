@@ -1,5 +1,4 @@
 use crate::app::SortBy;
-use crate::ui::ContextMenu;
 use crate::App;
 use crate::scanner::Scanner;
 use eframe::egui;
