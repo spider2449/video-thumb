@@ -69,7 +69,7 @@ impl Database {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(path_id, file_path) DO UPDATE SET
                 file_name = excluded.file_name,
-                thumbnail_path = excluded.thumbnail_path,
+                thumbnail_path = COALESCE(excluded.thumbnail_path, files.thumbnail_path),
                 file_size = excluded.file_size,
                 modified_at = excluded.modified_at",
             params![
