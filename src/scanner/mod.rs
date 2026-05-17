@@ -88,7 +88,7 @@ impl Scanner {
 
         // Generate thumbnail at frame 300
         if let Some(ffmpeg_path) = Self::get_ffmpeg() {
-            let data_dir = crate::app::get_data_dir();
+            let data_dir = crate::utils::get_data_dir();
             let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
             match gen.generate_thumbnail_at_frame(&file_entry.file_path, 300) {
                 Ok(thumb_path) => {
@@ -104,7 +104,7 @@ impl Scanner {
     }
 
     fn get_ffmpeg() -> Option<std::path::PathBuf> {
-        let data_dir = crate::app::get_data_dir();
+        let data_dir = crate::utils::get_data_dir();
         let ffmpeg_dir = data_dir.join("ffmpeg");
 
         #[cfg(target_os = "windows")]

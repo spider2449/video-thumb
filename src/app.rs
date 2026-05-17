@@ -2,7 +2,6 @@ use crate::db::{Database, FileEntry, WatchedPath};
 use crate::ui::{MainWindow, SettingsDialog, TagManager};
 use eframe::egui;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -60,13 +59,9 @@ impl Default for SortBy {
     fn default() -> Self { SortBy::Name }
 }
 
-pub fn get_data_dir() -> PathBuf {
-    crate::config::Config::load().get_data_dir()
-}
-
 impl App {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let data_dir = get_data_dir();
+        let data_dir = crate::utils::get_data_dir();
         std::fs::create_dir_all(&data_dir).ok();
         std::fs::create_dir_all(data_dir.join("thumbs")).ok();
 

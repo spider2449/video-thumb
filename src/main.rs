@@ -4,6 +4,7 @@ mod db;
 mod scanner;
 mod thumbnail;
 mod ui;
+mod utils;
 
 #[cfg(target_os = "windows")]
 fn toggle_console_window(show: bool) {
@@ -26,11 +27,6 @@ fn toggle_console_window(show: bool) {
 
 #[cfg(not(target_os = "windows"))]
 fn toggle_console_window(_show: bool) {}
-
-/// Get the effective data directory from config
-pub fn get_data_dir() -> std::path::PathBuf {
-    config::Config::load().get_data_dir()
-}
 
 use app::App;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

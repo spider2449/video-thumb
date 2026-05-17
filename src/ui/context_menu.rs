@@ -400,7 +400,7 @@ fn get_ffmpeg_path() -> Option<PathBuf> {
 }
 
 fn get_data_dir() -> std::path::PathBuf {
-    crate::app::get_data_dir()
+    crate::utils::get_data_dir()
 }
 
 fn parse_time_string(time: &str) -> Option<f64> {
