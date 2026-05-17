@@ -87,14 +87,17 @@ impl Config {
     }
 
     /// Get the effective data directory
-    /// Returns either the configured custom path or the default system path
+    /// Returns either the configured custom path or a "cache" directory next to the executable
     pub fn get_data_dir(&self) -> PathBuf {
         if let Some(ref custom_dir) = self.data_dir {
             custom_dir.clone()
         } else {
-            dirs::data_local_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("video-thumb-viewer")
+            let exe_path = std::env::current_exe()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            exe_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("cache")
         }
     }
 
