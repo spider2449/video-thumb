@@ -9,6 +9,7 @@ pub struct App {
     pub db: Arc<Mutex<Database>>,
     pub watched_paths: Vec<WatchedPath>,
     pub files: HashMap<i64, Vec<FileEntry>>,
+    pub file_tag_map: HashMap<i64, Vec<i64>>, // file_id -> tag_ids
     pub tags: Vec<crate::db::Tag>,
     pub current_path_id: Option<i64>,
     pub thumbnail_size: f32,
@@ -81,6 +82,7 @@ impl App {
             db,
             watched_paths,
             files: HashMap::new(),
+            file_tag_map: HashMap::new(),
             tags,
             current_path_id: None,
             thumbnail_size: 200.0,
@@ -125,6 +127,12 @@ impl App {
     pub fn load_files_for_path(&mut self, path_id: i64) {
         let db_guard = self.db.blocking_lock();
         if let Ok(files) = db_guard.get_files_for_path(path_id) {
+            // Build tag map for cached files
+            for file in &files {
+                if let Ok(tags) = db_guard.get_tags_for_file(file.id) {
+                    self.file_tag_map.insert(file.id, tags.iter().map(|t| t.id).collect());
+                }
+            }
             self.files.insert(path_id, files);
         }
     }
@@ -159,18 +167,11 @@ impl App {
         }
 
         if let Some(tag_id) = self.tag_filter {
-            // Tag filter still needs DB lookup per file (could be optimized later)
-            // For now, skip if no cache to avoid blocking
-            if self.files.contains_key(&path_id) {
-                let db_guard = self.db.blocking_lock();
-                files.retain(|f| {
-                    if let Ok(tags) = db_guard.get_tags_for_file(f.id) {
-                        tags.iter().any(|t| t.id == tag_id)
-                    } else {
-                        false
-                    }
-                });
-            }
+            files.retain(|f| {
+                self.file_tag_map.get(&f.id)
+                    .map(|tags| tags.contains(&tag_id))
+                    .unwrap_or(false)
+            });
         }
 
         match self.sort_by {

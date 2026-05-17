@@ -75,6 +75,10 @@ impl ContextMenu {
                                     app.db.blocking_lock()
                                         .remove_tag_from_file(file_id_copy, tag_id)
                                         .ok();
+                                    // Update cached tag map
+                                    app.file_tag_map.entry(file_id_copy)
+                                        .and_modify(|tags| tags.retain(|&t| t != tag_id));
+                                    app.invalidate_cache();
                                 }
                             });
                         }
@@ -82,6 +86,7 @@ impl ContextMenu {
                         // ComboBox to select existing tags
                         let available_tags: Vec<_> = app.tags.iter()
                             .filter(|t| !file_tags.iter().any(|ft| ft.id == t.id))
+                            .map(|t| (t.id, t.name.clone(), t.color.clone()))
                             .collect();
 
                         if !available_tags.is_empty() {
@@ -91,11 +96,16 @@ impl ContextMenu {
                                     .width(120.0)
                                     .selected_text("選擇標籤")
                                     .show_ui(ui, |ui| {
-                                        for tag in available_tags {
-                                            if ui.selectable_label(false, egui::RichText::new(&tag.name).color(crate::utils::hex_to_color(&tag.color))).clicked() {
+                                        for (tag_id, tag_name, tag_color) in available_tags {
+                                            if ui.selectable_label(false, egui::RichText::new(&tag_name).color(crate::utils::hex_to_color(&tag_color))).clicked() {
                                                 app.db.blocking_lock()
-                                                    .add_tag_to_file(file_id, tag.id)
+                                                    .add_tag_to_file(file_id, tag_id)
                                                     .ok();
+                                                // Update cached tag map
+                                                app.file_tag_map.entry(file_id)
+                                                    .or_default()
+                                                    .push(tag_id);
+                                                app.invalidate_cache();
                                             }
                                         }
                                     });
@@ -211,6 +221,7 @@ impl ContextMenu {
                 f.rating = rating;
             }
         }
+        app.invalidate_cache();
     }
 
     fn add_tag_internal(&mut self, file_id: i64, app: &mut App) {
