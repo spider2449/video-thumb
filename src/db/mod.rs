@@ -17,7 +17,7 @@ impl Database {
         let conn = Connection::open(path)?;
 
         // Enable foreign keys
-        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
 
         let db = Self { conn };
         db.init_schema()?;
