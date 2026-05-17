@@ -24,6 +24,9 @@ pub struct App {
     pub scan_status: String,
     pub scan_complete_tx: Option<std::sync::mpsc::Sender<ScanResult>>,
     pub scan_complete_rx: Option<std::sync::mpsc::Receiver<ScanResult>>,
+    pub thumbnail_progress: Option<(usize, usize)>,
+    pub thumb_progress_rx: Option<std::sync::mpsc::Receiver<usize>>,
+    pub thumb_done_rx: Option<std::sync::mpsc::Receiver<i64>>,
     // Dialog state
     pub add_path_path: String,
     pub add_path_display_name: String,
@@ -46,6 +49,7 @@ pub struct ScanResult {
     pub count: usize,
     pub success: bool,
     pub message: String,
+    pub files_needing_thumbnails: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +105,9 @@ impl App {
             remove_path_confirm: None,
             console_visible: true,
             current_theme: "dark".to_string(),
+            thumbnail_progress: None,
+            thumb_progress_rx: None,
+            thumb_done_rx: None,
         };
 
         if app.watched_paths.is_empty() {
@@ -238,6 +245,45 @@ impl App {
         }
     }
 
+    pub fn start_thumbnail_generation(&mut self, files: Vec<String>, path_id: i64) {
+        let total = files.len();
+        let db = self.db.clone();
+        let data_dir = crate::utils::get_data_dir();
+        let (progress_tx, progress_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+
+        self.thumbnail_progress = Some((0, total));
+        self.scan_status = format!("生成縮圖中... 0/{}", total);
+
+        // Store channels for polling
+        self.thumb_progress_rx = Some(progress_rx);
+        self.thumb_done_rx = Some(done_rx);
+
+        std::thread::spawn(move || {
+            if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
+                let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
+                for (i, file_path) in files.iter().enumerate() {
+                    match gen.generate_thumbnail_at_frame(file_path, 300) {
+                        Ok(thumb_path) => {
+                            let db_guard = db.blocking_lock();
+                            // Find file by path to get its ID
+                            if let Ok(all_files) = db_guard.get_files_for_path(path_id) {
+                                if let Some(file) = all_files.iter().find(|f| f.file_path == *file_path) {
+                                    let _ = db_guard.update_thumbnail(file.id, &thumb_path);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to generate thumbnail for {}: {}", file_path, e);
+                        }
+                    }
+                    let _ = progress_tx.send(i + 1);
+                }
+            }
+            let _ = done_tx.send(path_id);
+        });
+    }
+
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Load and apply theme on first frame
         if self.current_theme == "dark" {
@@ -260,15 +306,44 @@ impl App {
         if let Some(rx) = self.scan_complete_rx.take() {
             if let Ok(result) = rx.try_recv() {
                 self.scanning = false;
-                self.scan_status = if result.success {
-                    format!("完成！找到 {} 個檔案", result.count)
+                if result.success {
+                    self.scan_status = format!("完成！找到 {} 個檔案", result.count);
+                    // Start thumbnail generation in background
+                    if !result.files_needing_thumbnails.is_empty() {
+                        self.start_thumbnail_generation(result.files_needing_thumbnails, result.path_id);
+                    } else {
+                        self.load_files_for_path(result.path_id);
+                    }
                 } else {
-                    format!("失敗: {}", result.message)
-                };
+                    self.scan_status = format!("失敗: {}", result.message);
+                }
                 // Force UI update by requesting a repaint
                 ctx.request_repaint();
             } else {
                 self.scan_complete_rx = Some(rx);
+            }
+        }
+
+        // Poll thumbnail progress
+        if let Some(rx) = self.thumb_progress_rx.as_ref() {
+            while let Ok(completed) = rx.try_recv() {
+                if let Some((_, total)) = self.thumbnail_progress {
+                    self.thumbnail_progress = Some((completed, total));
+                    self.scan_status = format!("生成縮圖中... {}/{}", completed, total);
+                    ctx.request_repaint();
+                }
+            }
+        }
+
+        // Check for thumbnail generation completion
+        if let Some(rx) = self.thumb_done_rx.take() {
+            if let Ok(path_id) = rx.try_recv() {
+                self.thumbnail_progress = None;
+                self.scan_status = format!("完成！找到 {} 個檔案", self.files.get(&path_id).map(|f| f.len()).unwrap_or(0));
+                self.load_files_for_path(path_id);
+                ctx.request_repaint();
+            } else {
+                self.thumb_done_rx = Some(rx);
             }
         }
 

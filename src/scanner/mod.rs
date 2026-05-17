@@ -11,12 +11,18 @@ pub struct Scanner {
     extensions: Vec<String>,
 }
 
+/// Result of a scan operation
+pub struct ScanFileResult {
+    pub count: usize,
+    pub files_needing_thumbnails: Vec<String>,
+}
+
 impl Scanner {
     pub fn new(db: Arc<Mutex<Database>>, extensions: Vec<String>) -> Self {
         Self { db, extensions }
     }
 
-    pub async fn scan_path(&self, path_id: i64, root_path: &str) -> Result<usize, String> {
+    pub async fn scan_path(&self, path_id: i64, root_path: &str) -> Result<ScanFileResult, String> {
         info!("Starting scan for path_id={}, root={}", path_id, root_path);
         let path = PathBuf::from(root_path);
 
@@ -24,47 +30,77 @@ impl Scanner {
             return Err(format!("Path does not exist: {}", root_path));
         }
 
-        let mut count = 0;
+        let extensions = self.extensions.clone();
+        let root_str = root_path.to_string();
 
-        for entry in WalkDir::new(&path)
+        // Run blocking I/O on spawn_blocking
+        let files = tokio::task::spawn_blocking(move || {
+            Self::blocking_scan(&root_str, path_id, &extensions)
+        })
+        .await
+        .map_err(|e| format!("task join error: {e}"))?;
+
+        // Insert files into database
+        let mut count = 0;
+        let mut files_needing_thumbnails = Vec::new();
+        let data_dir = crate::utils::get_data_dir();
+        let thumbs_dir = data_dir.join("thumbs");
+
+        for file_entry in files {
+            let thumb_path = thumbs_dir.join(format!("{:x}.jpg", md5::compute(file_entry.file_path.as_bytes())));
+            let needs_thumb = !thumb_path.exists();
+            if needs_thumb {
+                files_needing_thumbnails.push(file_entry.file_path.clone());
+            }
+
+            let db = self.db.lock().await;
+            if let Err(e) = db.upsert_file(&file_entry) {
+                error!("Failed to insert file: {:?}", e);
+            } else {
+                count += 1;
+            }
+        }
+
+        info!("Scan complete: {} files found, {} need thumbnails", count, files_needing_thumbnails.len());
+        Ok(ScanFileResult { count, files_needing_thumbnails })
+    }
+
+    fn blocking_scan(path: &str, path_id: i64, extensions: &[String]) -> Vec<FileEntry> {
+        let root = PathBuf::from(path);
+        let mut entries = Vec::new();
+
+        for entry in WalkDir::new(&root)
             .follow_links(true)
             .into_iter()
             .filter_map(|e| e.ok())
         {
             let file_path = entry.path();
-
             if !file_path.is_file() {
                 continue;
             }
 
             if let Some(ext) = file_path.extension() {
                 let ext_lower = ext.to_string_lossy().to_lowercase();
-                if !self.extensions.contains(&ext_lower) {
+                if !extensions.contains(&ext_lower) {
                     continue;
                 }
 
-                if let Some(file_entry) = self.create_file_entry(path_id, file_path) {
-                    let db = self.db.lock().await;
-                    if let Err(e) = db.upsert_file(&file_entry) {
-                        error!("Failed to insert file: {:?}", e);
-                    } else {
-                        count += 1;
-                    }
+                if let Some(file_entry) = Self::create_file_entry(path_id, file_path) {
+                    entries.push(file_entry);
                 }
             }
         }
 
-        info!("Scan complete: {} files found", count);
-        Ok(count)
+        entries
     }
 
-    fn create_file_entry(&self, path_id: i64, file_path: &Path) -> Option<FileEntry> {
+    fn create_file_entry(path_id: i64, file_path: &Path) -> Option<FileEntry> {
         let metadata = file_path.metadata().ok()?;
         let modified_at: DateTime<Utc> = metadata.modified().ok()?.into();
 
         let file_name = file_path
-            .file_name()
-            ?.to_string_lossy()
+            .file_name()?
+            .to_string_lossy()
             .to_string();
 
         let file_ext = file_path
@@ -72,7 +108,7 @@ impl Scanner {
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let mut file_entry = FileEntry {
+        Some(FileEntry {
             id: 0,
             path_id,
             file_path: file_path.to_string_lossy().to_string(),
@@ -84,23 +120,7 @@ impl Scanner {
             rating: 0,
             has_custom_thumb: false,
             created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        };
-
-        // Generate thumbnail at frame 300
-        if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
-            let data_dir = crate::utils::get_data_dir();
-            let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
-            match gen.generate_thumbnail_at_frame(&file_entry.file_path, 300) {
-                Ok(thumb_path) => {
-                    file_entry.thumbnail_path = Some(thumb_path);
-                }
-                Err(e) => {
-                    log::warn!("Failed to generate thumbnail for {}: {}", file_entry.file_path, e);
-                }
-            }
-        }
-
-        Some(file_entry)
+        })
     }
 }
 

@@ -474,8 +474,13 @@ impl MainWindow {
     fn start_scan(app: &mut App) {
         if app.watched_paths.is_empty() { return; }
 
-        let path_id = app.current_path_id.or_else(|| app.watched_paths.first().map(|p| p.id)).unwrap();
-        let path = app.watched_paths.iter().find(|p| p.id == path_id).map(|p| p.path.clone()).unwrap();
+        let path_id = app.current_path_id
+            .or_else(|| app.watched_paths.first().map(|p| p.id))
+            .unwrap();
+        let path = app.watched_paths.iter()
+            .find(|p| p.id == path_id)
+            .map(|p| p.path.clone())
+            .unwrap();
 
         let db = app.db.clone();
         let extensions = app.db.blocking_lock().get_video_extensions();
@@ -483,8 +488,8 @@ impl MainWindow {
         app.scanning = true;
         app.scan_progress = 0.0;
         app.scan_status = "掃描中...".to_string();
+        app.thumbnail_progress = None;
 
-        // Create channel for scan result
         let (tx, rx) = std::sync::mpsc::channel();
         app.scan_complete_rx = Some(rx);
 
@@ -497,13 +502,14 @@ impl MainWindow {
                 .block_on(scanner.scan_path(path_id, &path));
 
             match result {
-                Ok(count) => {
-                    info!("Scan completed: {} files", count);
+                Ok(scan_result) => {
+                    info!("Scan completed: {} files, {} need thumbnails", scan_result.count, scan_result.files_needing_thumbnails.len());
                     let _ = tx.send(crate::app::ScanResult {
                         path_id,
-                        count,
+                        count: scan_result.count,
                         success: true,
                         message: String::new(),
+                        files_needing_thumbnails: scan_result.files_needing_thumbnails,
                     });
                 }
                 Err(e) => {
@@ -513,6 +519,7 @@ impl MainWindow {
                         count: 0,
                         success: false,
                         message: e,
+                        files_needing_thumbnails: Vec::new(),
                     });
                 }
             }
