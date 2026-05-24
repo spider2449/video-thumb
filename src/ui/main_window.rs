@@ -369,6 +369,16 @@ impl MainWindow {
                     egui::Color32::from_gray(30),
                 );
 
+                let is_selected = app.selected_file_id == Some(file.id);
+                if is_selected {
+                    ui.painter().rect_stroke(
+                        thumb_rect.rect.shrink(1.0),
+                        0.0,
+                        egui::Stroke::new(3.0, ui.visuals().selection.stroke.color),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+
                 if let Some(thumb_path) = &file.thumbnail_path {
                     let path = std::path::PathBuf::from(thumb_path);
                     if path.exists() {
@@ -442,6 +452,10 @@ impl MainWindow {
             log::error!("Failed to play video: {}", e);
         }
             }
+        }
+
+        if thumb_response.clicked() && !thumb_response.double_clicked() {
+            app.selected_file_id = Some(file.id);
         }
 
         if thumb_response.secondary_clicked() {
