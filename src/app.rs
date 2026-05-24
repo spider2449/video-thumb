@@ -418,6 +418,49 @@ impl App {
         self.refresh_cache_if_needed();
 
         MainWindow::show_main(ctx, self);
+
+        // Keyboard navigation for selected video
+        if let Some(selected_id) = self.selected_file_id {
+            let current_files = self.get_current_files();
+            if let Some(selected_idx) = current_files.iter().position(|f| f.id == selected_id) {
+                let screen_width = ctx.input(|i| i.screen_rect.width());
+                let items_per_row = ((screen_width - 40.0) / self.thumbnail_size).max(1.0) as usize;
+
+                let new_idx = if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
+                    Some(selected_idx.saturating_add(1).min(current_files.len().saturating_sub(1)))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+                    Some(selected_idx.saturating_sub(1))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                    Some((selected_idx + items_per_row).min(current_files.len().saturating_sub(1)))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    Some(selected_idx.saturating_sub(items_per_row))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    // Play the selected video
+                    if let Some(file) = current_files.get(selected_idx) {
+                        let file_path = file.file_path.clone();
+                        let db = self.db.blocking_lock();
+                        let player = db.get_setting("default_player")
+                            .ok().flatten().unwrap_or_default();
+                        drop(db);
+                        if let Some(ffp) = crate::utils::get_ffmpeg_path() {
+                            let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp);
+                            let _ = gen.play_video(&file_path, if player.is_empty() { "" } else { &player });
+                        }
+                    }
+                    None
+                } else {
+                    None
+                };
+
+                if let Some(idx) = new_idx {
+                    self.selected_file_id = Some(current_files[idx].id);
+                    ctx.request_repaint();
+                }
+            } else {
+                // Selected file no longer in the current list (filtered out)
+                self.selected_file_id = None;
+            }
+        }
     }
 }
 
