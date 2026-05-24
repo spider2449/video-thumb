@@ -219,6 +219,18 @@ impl App {
         }
     }
 
+    pub fn play_video_file(&self, file_path: &str) {
+        let player = self.db.blocking_lock().get_setting("default_player")
+            .ok().flatten().unwrap_or_default();
+        let player_str: &str = if player.is_empty() { "" } else { &player };
+        if let Some(ffp) = crate::utils::get_ffmpeg_path() {
+            let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp);
+            if let Err(e) = gen.play_video(file_path, player_str) {
+                log::error!("Failed to play video: {}", e);
+            }
+        }
+    }
+
     pub fn add_path(&mut self) {
         if self.add_path_path.is_empty() {
             self.add_path_error = Some("請選擇資料夾路徑".to_string());
@@ -435,17 +447,8 @@ impl App {
                 } else if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                     Some(selected_idx.saturating_sub(items_per_row))
                 } else if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    // Play the selected video
                     if let Some(file) = current_files.get(selected_idx) {
-                        let file_path = file.file_path.clone();
-                        let db = self.db.blocking_lock();
-                        let player = db.get_setting("default_player")
-                            .ok().flatten().unwrap_or_default();
-                        drop(db);
-                        if let Some(ffp) = crate::utils::get_ffmpeg_path() {
-                            let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp);
-                            let _ = gen.play_video(&file_path, if player.is_empty() { "" } else { &player });
-                        }
+                        self.play_video_file(&file.file_path);
                     }
                     None
                 } else {

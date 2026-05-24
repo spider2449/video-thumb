@@ -441,17 +441,7 @@ impl MainWindow {
     let thumb_response = match &*thumb_rc.borrow() { Some(r) => r.clone(), None => return };
 
     if thumb_response.double_clicked() {
-        log::info!("Double-click detected on: {}", file.file_name);
-            let file_path = file.file_path.clone();
-            let player = app.db.blocking_lock().get_setting("default_player")
-                .ok().flatten().unwrap_or_default();
-            let player_str: &str = if player.is_empty() { "" } else { &player };
-            if let Some(ffp) = crate::utils::get_ffmpeg_path() {
-                let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp);
-                if let Err(e) = gen.play_video(&file_path, player_str) {
-            log::error!("Failed to play video: {}", e);
-        }
-            }
+        app.play_video_file(&file.file_path);
         }
 
         if thumb_response.clicked() && !thumb_response.double_clicked() {
