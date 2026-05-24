@@ -150,6 +150,7 @@ impl MainWindow {
 
                                 if ui.add(button).clicked() {
                                     app.current_path_id = Some(path.id);
+                                    app.selected_file_id = None;
                                     if !app.files.contains_key(&path.id) {
                                         app.load_files_for_path(path.id);
                                     }

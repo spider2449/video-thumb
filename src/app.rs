@@ -12,6 +12,7 @@ pub struct App {
     pub file_tag_map: HashMap<i64, Vec<i64>>, // file_id -> tag_ids
     pub tags: Vec<crate::db::Tag>,
     pub current_path_id: Option<i64>,
+    pub selected_file_id: Option<i64>,
     pub thumbnail_size: f32,
     pub search_query: String,
     pub rating_filter: Option<i32>,
@@ -21,6 +22,7 @@ pub struct App {
     pub show_add_path: bool,
     pub show_tag_manager: bool,
     pub scanning: bool,
+    pub loading_files: bool,
     pub scan_progress: f32,
     pub scan_status: String,
     pub scan_complete_tx: Option<std::sync::mpsc::Sender<ScanResult>>,
@@ -85,6 +87,7 @@ impl App {
             file_tag_map: HashMap::new(),
             tags,
             current_path_id: None,
+            selected_file_id: None,
             thumbnail_size: 200.0,
             search_query: String::new(),
             rating_filter: None,
@@ -94,6 +97,7 @@ impl App {
             show_add_path: false,
             show_tag_manager: false,
             scanning: false,
+            loading_files: false,
             scan_progress: 0.0,
             scan_status: String::new(),
             scan_complete_tx: None,
@@ -125,6 +129,7 @@ impl App {
     }
 
     pub fn load_files_for_path(&mut self, path_id: i64) {
+        self.loading_files = true;
         let db_guard = self.db.blocking_lock();
         match db_guard.get_files_for_path(path_id) {
             Ok(files) => {
@@ -150,6 +155,7 @@ impl App {
                 log::error!("Failed to load files for path_id={}: {:?}", path_id, e);
             }
         }
+        self.loading_files = false;
     }
 
     pub fn get_current_files(&self) -> Vec<FileEntry> {
@@ -339,6 +345,10 @@ impl App {
     }
 
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.scanning || self.thumbnail_progress.is_some() || self.loading_files {
+            ctx.set_cursor_icon(egui::CursorIcon::Wait);
+        }
+
         // Load and apply theme on first frame
         if self.current_theme == "dark" {
             let db_guard = self.db.blocking_lock();
