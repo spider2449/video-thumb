@@ -45,10 +45,10 @@ impl Scanner {
         let mut count = 0;
         let mut files_needing_thumbnails = Vec::new();
         let data_dir = crate::utils::get_data_dir();
-        let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &PathBuf::from(""));
+        let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &PathBuf::from(""), self.db.clone());
 
         for file_entry in &files {
-            let thumb_path = gen.get_thumbnail_path(&file_entry.file_path);
+            let thumb_path = gen.get_thumbnail_path(&file_entry.file_path, None);
             if !thumb_path.exists() {
                 files_needing_thumbnails.push(file_entry.file_path.clone());
             }
