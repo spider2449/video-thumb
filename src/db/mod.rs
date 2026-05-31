@@ -2,7 +2,7 @@ mod models;
 mod queries;
 
 use log::info;
-use rusqlite::{Connection, Result as SqliteResult};
+use rusqlite::{params, Connection, Result as SqliteResult};
 use std::path::Path;
 
 pub use models::*;
@@ -22,6 +22,7 @@ impl Database {
         let db = Self { conn };
         db.init_schema()?;
         db.init_default_settings()?;
+        db.migrate_thumbnails()?;
 
         Ok(db)
     }
@@ -69,6 +70,11 @@ impl Database {
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS thumbnail_map (
+                file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+                thumb_filename TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_files_path_id ON files(path_id);
             CREATE INDEX IF NOT EXISTS idx_files_rating ON files(rating);
             CREATE INDEX IF NOT EXISTS idx_file_tags_file ON file_tags(file_id);
@@ -94,6 +100,59 @@ impl Database {
                 [key, value],
             )?;
         }
+        Ok(())
+    }
+
+    fn migrate_thumbnails(&self) -> SqliteResult<()> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM thumbnail_map",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if count > 0 {
+            return Ok(());
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file_path, thumbnail_path FROM files WHERE thumbnail_path IS NOT NULL"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
+
+        for row in rows {
+            let (file_id, _file_path, thumb_path) = row?;
+            let old_path = std::path::PathBuf::from(&thumb_path);
+
+            if old_path.exists() {
+                let uuid = uuid::Uuid::new_v4().to_string();
+                let new_filename = format!("{}.jpg", uuid);
+                let new_path = thumbs_dir.join(&new_filename);
+
+                if std::fs::rename(&old_path, &new_path).is_ok() {
+                    self.conn.execute(
+                        "INSERT INTO thumbnail_map (file_id, thumb_filename) VALUES (?1, ?2)",
+                        params![file_id, new_filename],
+                    )?;
+                    info!("Migrated thumbnail for file_id={}: {} -> {}", file_id, thumb_path, new_filename);
+                } else {
+                    log::warn!("Failed to rename thumbnail for file_id={}", file_id);
+                }
+            }
+
+            self.conn.execute(
+                "UPDATE files SET thumbnail_path = NULL WHERE id = ?1",
+                [file_id],
+            )?;
+        }
+
         Ok(())
     }
 
