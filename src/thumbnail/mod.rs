@@ -105,8 +105,11 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                if let Err(e) = self.db.blocking_lock().set_thumb_filename(fid, &new_filename) {
+                let db = self.db.blocking_lock();
+                if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
+                    let _ = std::fs::remove_file(&final_path);
+                    return Err(format!("Failed to save thumbnail mapping: {}", e));
                 }
             }
             info!("Thumbnail generated: {:?}", final_path);
@@ -151,8 +154,11 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                if let Err(e) = self.db.blocking_lock().set_thumb_filename(fid, &new_filename) {
+                let db = self.db.blocking_lock();
+                if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
+                    let _ = std::fs::remove_file(&final_path);
+                    return Err(format!("Failed to save thumbnail mapping: {}", e));
                 }
             }
             info!("Thumbnail generated: {:?}", final_path);
@@ -239,8 +245,11 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                if let Err(e) = self.db.blocking_lock().set_thumb_filename(fid, &new_filename) {
+                let db = self.db.blocking_lock();
+                if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
+                    let _ = std::fs::remove_file(&final_path);
+                    return Err(format!("Failed to save thumbnail mapping: {}", e));
                 }
             }
             info!("Thumbnail generated: {:?}", final_path);
@@ -285,18 +294,23 @@ impl ThumbnailGenerator {
 
     pub fn delete_thumbnail(&self, file_path: &str, file_id: Option<i64>) {
         if let Some(fid) = file_id {
-            if let Ok(Some(filename)) = self.db.blocking_lock().get_thumb_filename(fid) {
-                let thumb_path = self.get_thumbs_dir().join(&filename);
-                if thumb_path.exists() {
-                    if let Err(e) = std::fs::remove_file(&thumb_path) {
-                        error!("Failed to delete thumbnail: {}", e);
-                    } else {
-                        info!("Deleted thumbnail: {:?}", thumb_path);
+            let db = self.db.blocking_lock();
+            if let Ok(Some(filename)) = db.get_thumb_filename(fid) {
+                if !filename.contains('/') && !filename.contains('\\') && !filename.contains("..") {
+                    let thumb_path = self.get_thumbs_dir().join(&filename);
+                    if thumb_path.exists() {
+                        if let Err(e) = std::fs::remove_file(&thumb_path) {
+                            error!("Failed to delete thumbnail: {}", e);
+                        } else {
+                            info!("Deleted thumbnail: {:?}", thumb_path);
+                        }
                     }
+                } else {
+                    log::error!("Invalid thumbnail filename in DB for file_id={}: {}", fid, filename);
                 }
-                if let Err(e) = self.db.blocking_lock().delete_thumb_mapping(fid) {
-                    log::error!("Failed to delete thumbnail mapping for file_id={}: {}", fid, e);
-                }
+            }
+            if let Err(e) = db.delete_thumb_mapping(fid) {
+                log::error!("Failed to delete thumbnail mapping for file_id={}: {}", fid, e);
             }
         }
 
