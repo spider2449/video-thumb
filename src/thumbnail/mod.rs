@@ -2,8 +2,7 @@ use log::{error, info};
 use md5;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use crate::db::Database;
 
 pub struct ThumbnailGenerator {
@@ -31,7 +30,7 @@ impl ThumbnailGenerator {
 
     pub fn get_thumbnail_path(&self, video_path: &str, file_id: Option<i64>) -> PathBuf {
         if let Some(fid) = file_id {
-            if let Ok(Some(filename)) = self.db.blocking_lock().get_thumb_filename(fid) {
+            if let Ok(Some(filename)) = self.db.lock().unwrap().get_thumb_filename(fid) {
                 if !filename.contains('/') && !filename.contains('\\') && !filename.contains("..") {
                     let path = self.get_thumbs_dir().join(&filename);
                     if path.exists() {
@@ -51,7 +50,7 @@ impl ThumbnailGenerator {
                 let uuid = uuid::Uuid::new_v4().to_string();
                 let new_filename = format!("{}.jpg", uuid);
                 let new_path = self.get_thumbs_dir().join(&new_filename);
-                let db = self.db.blocking_lock();
+                let db = self.db.lock().unwrap();
                 if std::fs::rename(&md5_path, &new_path).is_ok() {
                     if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                         log::error!("Failed to save mapping for file_id={}: {}", fid, e);
@@ -105,7 +104,7 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                let db = self.db.blocking_lock();
+                let db = self.db.lock().unwrap();
                 if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
                     let _ = std::fs::remove_file(&final_path);
@@ -154,7 +153,7 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                let db = self.db.blocking_lock();
+                let db = self.db.lock().unwrap();
                 if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
                     let _ = std::fs::remove_file(&final_path);
@@ -245,7 +244,7 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                let db = self.db.blocking_lock();
+                let db = self.db.lock().unwrap();
                 if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
                     let _ = std::fs::remove_file(&final_path);
@@ -294,7 +293,7 @@ impl ThumbnailGenerator {
 
     pub fn delete_thumbnail(&self, file_path: &str, file_id: Option<i64>) {
         if let Some(fid) = file_id {
-            let db = self.db.blocking_lock();
+            let db = self.db.lock().unwrap();
             if let Ok(Some(filename)) = db.get_thumb_filename(fid) {
                 if !filename.contains('/') && !filename.contains('\\') && !filename.contains("..") {
                     let thumb_path = self.get_thumbs_dir().join(&filename);

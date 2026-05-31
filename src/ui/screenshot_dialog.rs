@@ -245,7 +245,7 @@ impl ScreenshotDialog {
 
         if let Ok(thumb_path) = gen.generate_thumbnail_at_time(&self.file.file_path, self.current_time, Some(self.file.id)) {
             // Update database
-            if let Err(e) = app.db.blocking_lock()
+            if let Err(e) = app.db.lock().unwrap()
                 .update_thumbnail(self.file.id, &thumb_path) {
                 log::error!("Failed to update thumbnail in database: {}", e);
             } else {

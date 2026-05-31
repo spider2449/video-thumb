@@ -115,7 +115,7 @@ impl Database {
         }
 
         let mut stmt = self.conn.prepare(
-            "SELECT id, thumbnail_path FROM files WHERE thumbnail_path IS NOT NULL"
+            "SELECT id, thumbnail_path FROM files WHERE thumbnail_path IS NOT NULL AND id NOT IN (SELECT file_id FROM thumbnail_map)"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -138,7 +138,7 @@ impl Database {
 
                 if std::fs::rename(&old_path, &new_path).is_ok() {
                     self.conn.execute(
-                        "INSERT INTO thumbnail_map (file_id, thumb_filename) VALUES (?1, ?2)",
+                        "INSERT OR REPLACE INTO thumbnail_map (file_id, thumb_filename) VALUES (?1, ?2)",
                         params![file_id, new_filename],
                     )?;
                     self.conn.execute(

@@ -320,4 +320,14 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub fn get_all_thumb_filenames(&self) -> SqliteResult<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT thumb_filename FROM thumbnail_map"
+        )?;
+        let filenames = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+        Ok(filenames)
+    }
 }

@@ -58,7 +58,7 @@ impl TagManager {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let tag_id = tag.id;
                                 if ui.button("刪除").clicked() {
-                                    app.db.blocking_lock().delete_tag(tag_id).ok();
+                                    app.db.lock().unwrap().delete_tag(tag_id).ok();
                                     app.tags.retain(|t| t.id != tag_id);
                                 }
                                 if ui.button("編輯").clicked() {
@@ -153,7 +153,7 @@ impl TagManager {
             return;
         }
 
-        let db = app.db.blocking_lock();
+        let db = app.db.lock().unwrap();
         if db.update_tag(tag_id, name, &self.edit_color).is_ok() {
             if let Some(tag) = app.tags.iter_mut().find(|t| t.id == tag_id) {
                 tag.name = name.to_string();
@@ -170,7 +170,7 @@ impl TagManager {
             return;
         }
 
-        let db = app.db.blocking_lock();
+        let db = app.db.lock().unwrap();
         match db.create_tag(name, &self.new_tag_color) {
             Ok(id) => {
                 app.tags.push(Tag {

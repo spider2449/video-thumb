@@ -2,8 +2,7 @@ use crate::db::{Database, FileEntry, WatchedPath};
 use crate::ui::{MainWindow, SettingsDialog, TagManager};
 use eframe::egui;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub struct App {
     pub db: Arc<Mutex<Database>>,
@@ -80,8 +79,8 @@ impl App {
             .expect("Failed to initialize database");
         let db = Arc::new(Mutex::new(db));
 
-        let watched_paths = db.blocking_lock().get_all_paths().unwrap_or_default();
-        let tags = db.blocking_lock().get_all_tags().unwrap_or_default();
+        let watched_paths = db.lock().unwrap().get_all_paths().unwrap_or_default();
+        let tags = db.lock().unwrap().get_all_tags().unwrap_or_default();
 
         let mut app = Self {
             db,
@@ -135,7 +134,7 @@ impl App {
 
     pub fn load_files_for_path(&mut self, path_id: i64) {
         self.loading_files = true;
-        let db_guard = self.db.blocking_lock();
+        let db_guard = self.db.lock().unwrap();
         match db_guard.get_files_for_path(path_id) {
             Ok(files) => {
                 log::info!("Loaded {} files for path_id={}", files.len(), path_id);
@@ -192,7 +191,7 @@ impl App {
         let base_files = if let Some(cached) = self.files.get(&path_id) {
             Arc::clone(cached)
         } else {
-            let db_guard = self.db.blocking_lock();
+            let db_guard = self.db.lock().unwrap();
             let files = db_guard.get_files_for_path(path_id).unwrap_or_default();
             let files = Arc::new(files);
             self.files.insert(path_id, Arc::clone(&files));
@@ -245,7 +244,7 @@ impl App {
     }
 
     pub fn play_video_file(&self, file_path: &str) {
-        let player = self.db.blocking_lock().get_setting("default_player")
+        let player = self.db.lock().unwrap().get_setting("default_player")
             .ok().flatten().unwrap_or_default();
         let player_str: &str = if player.is_empty() { "" } else { &player };
         if let Some(ffp) = crate::utils::get_ffmpeg_path() {
@@ -280,7 +279,7 @@ impl App {
         };
 
         let path_str = self.add_path_path.clone();
-        let db = self.db.blocking_lock();
+        let db = self.db.lock().unwrap();
 
         match db.path_exists(&path_str) {
             Ok(true) => {
@@ -355,7 +354,7 @@ impl App {
             let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path, db.clone());
 
             // Build path->id map once to avoid O(n²) lookups
-            let db_guard = db.blocking_lock();
+            let db_guard = db.lock().unwrap();
             let path_to_id: std::collections::HashMap<String, i64> = if let Ok(all_files) = db_guard.get_files_for_path(path_id) {
                 all_files.into_iter().map(|f| (f.file_path, f.id)).collect()
             } else {
@@ -368,7 +367,7 @@ impl App {
                 match gen.generate_thumbnail_at_frame(file_path, 300, file_id) {
                     Ok(thumb_path) => {
                         if let Some(file_id) = file_id {
-                            let db_guard = db.blocking_lock();
+                            let db_guard = db.lock().unwrap();
                             let _ = db_guard.update_thumbnail(file_id, &thumb_path);
                         }
                     }
@@ -389,7 +388,7 @@ impl App {
 
         // Load and apply theme on first frame
         if self.current_theme == "dark" {
-            let db_guard = self.db.blocking_lock();
+            let db_guard = self.db.lock().unwrap();
             self.current_theme = db_guard.get_setting("theme")
                 .ok()
                 .flatten()

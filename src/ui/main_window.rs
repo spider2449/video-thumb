@@ -36,6 +36,10 @@ impl MainWindow {
                         }
                     });
 
+                    if ui.button("🗑 Rescan thumbs").clicked() {
+                        Self::clean_unused_thumbnails(app);
+                    }
+
                     ui.separator();
 
                     ui.menu_button("排序", |ui| {
@@ -125,7 +129,7 @@ impl MainWindow {
                                 ctx.set_visuals(egui::Visuals::dark());
                             }
                             // Save preference
-                            let db = app.db.blocking_lock();
+                            let db = app.db.lock().unwrap();
                             let _ = db.set_setting("theme", &app.current_theme);
                         }
 
@@ -228,7 +232,7 @@ impl MainWindow {
                 ui.horizontal_wrapped(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("確認移除").clicked() {
-                            let db = app.db.blocking_lock();
+                            let db = app.db.lock().unwrap();
                             let should_remove = db.remove_path(path_id).is_ok();
                             drop(db);
                             if should_remove {
@@ -497,6 +501,48 @@ impl MainWindow {
         })
     }
 
+    fn clean_unused_thumbnails(app: &mut App) {
+        let data_dir = crate::utils::get_data_dir();
+        let thumbs_dir = data_dir.join("thumbs");
+        if !thumbs_dir.exists() {
+            app.scan_status = "縮圖資料夾不存在".to_string();
+            return;
+        }
+
+        let db = app.db.lock().unwrap();
+        let referenced: std::collections::HashSet<String> = db
+            .get_all_thumb_filenames()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        drop(db);
+
+        let mut deleted = 0usize;
+        let entries = match std::fs::read_dir(&thumbs_dir) {
+            Ok(e) => e,
+            Err(e) => {
+                app.scan_status = format!("無法讀取縮圖資料夾: {}", e);
+                return;
+            }
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let filename = entry.file_name().to_string_lossy().to_string();
+            if !referenced.contains(&filename) {
+                if std::fs::remove_file(entry.path()).is_ok() {
+                    deleted += 1;
+                }
+            }
+        }
+
+        app.scan_status = format!("已刪除 {} 個未使用的縮圖", deleted);
+        info!("Cleaned {} unused thumbnails", deleted);
+    }
+
     fn start_scan(app: &mut App) {
         if app.watched_paths.is_empty() { return; }
 
@@ -509,7 +555,7 @@ impl MainWindow {
             .unwrap();
 
         let db = app.db.clone();
-        let extensions = app.db.blocking_lock().get_video_extensions();
+        let extensions = app.db.lock().unwrap().get_video_extensions();
 
         app.scanning = true;
         app.scan_progress = 0.0;

@@ -22,7 +22,7 @@ impl SettingsDialog {
     }
 
     pub fn load(&mut self, app: &App) {
-        let db = app.db.blocking_lock();
+        let db = app.db.lock().unwrap();
         self.player_path = db.get_setting("default_player")
             .ok()
             .flatten()
@@ -114,7 +114,7 @@ impl SettingsDialog {
     }
 
     fn save(&self, app: &mut App) -> Result<(), String> {
-        let db = app.db.blocking_lock();
+        let db = app.db.lock().unwrap();
 
         db.set_setting("default_player", &self.player_path)
             .map_err(|e| format!("儲存播放器路徑失敗: {}", e))?;

@@ -3,8 +3,7 @@ use chrono::{DateTime, Utc};
 use log::{error, info};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 
 pub struct Scanner {
@@ -47,7 +46,7 @@ impl Scanner {
 
         let db_files;
         {
-            let db = self.db.lock().await;
+            let db = self.db.lock().unwrap();
             for file_entry in &files {
                 if let Err(e) = db.upsert_file(&file_entry) {
                     error!("Failed to insert file: {:?}", e);
