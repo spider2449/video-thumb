@@ -249,7 +249,7 @@ impl App {
             .ok().flatten().unwrap_or_default();
         let player_str: &str = if player.is_empty() { "" } else { &player };
         if let Some(ffp) = crate::utils::get_ffmpeg_path() {
-            let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp);
+            let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp, self.db.clone());
             if let Err(e) = gen.play_video(file_path, player_str) {
                 log::error!("Failed to play video: {}", e);
             }
@@ -352,7 +352,7 @@ impl App {
                 let _ = done_tx.send(path_id);
                 return;
             };
-            let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
+            let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path, db.clone());
 
             // Build path->id map once to avoid O(n²) lookups
             let db_guard = db.blocking_lock();
@@ -364,9 +364,10 @@ impl App {
             drop(db_guard);
 
             for (i, file_path) in files.iter().enumerate() {
-                match gen.generate_thumbnail_at_frame(file_path, 300) {
+                let file_id = path_to_id.get(file_path).copied();
+                match gen.generate_thumbnail_at_frame(file_path, 300, file_id) {
                     Ok(thumb_path) => {
-                        if let Some(&file_id) = path_to_id.get(file_path) {
+                        if let Some(file_id) = file_id {
                             let db_guard = db.blocking_lock();
                             let _ = db_guard.update_thumbnail(file_id, &thumb_path);
                         }
