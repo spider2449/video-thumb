@@ -154,6 +154,7 @@ impl MainWindow {
                                 if ui.add(button).clicked() {
                                     app.current_path_id = Some(*path_id);
                                     app.selected_file_id = None;
+                                    app.clear_texture_cache();
                                     if !app.files.contains_key(path_id) {
                                         app.load_files_for_path(*path_id);
                                     }
@@ -393,7 +394,7 @@ impl MainWindow {
                 if let Some(thumb_path) = &file.thumbnail_path {
                     let path = std::path::PathBuf::from(thumb_path);
                     if path.exists() {
-                        if let Some(tex) = Self::load_tex(ctx, &path) {
+                        if let Some(tex) = Self::load_tex(ctx, app, &path) {
                             let tex_size = tex.size_vec2();
                             let container_size = thumb_rect.rect.size();
 
@@ -477,26 +478,19 @@ impl MainWindow {
     }
     }
 
-    fn load_tex(ctx: &egui::Context, path: &std::path::PathBuf) -> Option<egui::TextureHandle> {
-        use std::collections::HashMap;
-        use std::sync::Mutex;
-        thread_local! { static CACHE: Mutex<HashMap<String, egui::TextureHandle>> = Mutex::new(HashMap::new()); }
-
+    fn load_tex(ctx: &egui::Context, app: &mut App, path: &std::path::PathBuf) -> Option<egui::TextureHandle> {
         let key = path.to_string_lossy().to_string();
-        CACHE.with(|c| {
-            let mut cache = c.lock().ok()?;
-            if let Some(h) = cache.get(&key) {
-                return Some(h.clone());
-            }
-            let img = image::open(path).ok()?;
-            let rgba = img.to_rgba8();
-            let colors: Vec<egui::Color32> = rgba.pixels().map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3])).collect();
-            let size = [rgba.width() as usize, rgba.height() as usize];
-            let color_img = egui::ColorImage { size, pixels: colors };
-            let h = ctx.load_texture(&key, color_img, egui::TextureOptions::LINEAR);
-            cache.insert(key, h.clone());
-            Some(h)
-        })
+        if let Some(h) = app.texture_cache.get(&key) {
+            return Some(h.clone());
+        }
+        let img = image::open(path).ok()?;
+        let rgba = img.to_rgba8();
+        let colors: Vec<egui::Color32> = rgba.pixels().map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3])).collect();
+        let size = [rgba.width() as usize, rgba.height() as usize];
+        let color_img = egui::ColorImage { size, pixels: colors };
+        let h = ctx.load_texture(&key, color_img, egui::TextureOptions::LINEAR);
+        app.texture_cache.insert(key, h.clone());
+        Some(h)
     }
 
     fn clean_unused_thumbnails(app: &mut App) {

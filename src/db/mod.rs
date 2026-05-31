@@ -27,6 +27,16 @@ impl Database {
         Ok(db)
     }
 
+    #[cfg(test)]
+    pub fn new_in_memory() -> SqliteResult<Self> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        let db = Self { conn };
+        db.init_schema()?;
+        db.init_default_settings()?;
+        Ok(db)
+    }
+
     fn init_schema(&self) -> SqliteResult<()> {
         info!("Creating database schema");
         self.conn.execute_batch(

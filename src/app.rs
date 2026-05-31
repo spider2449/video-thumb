@@ -52,6 +52,8 @@ pub struct App {
     pub scroll_to_idx: Option<usize>,
     // Language
     pub lang: Lang,
+    pub texture_cache: HashMap<String, egui::TextureHandle>,
+    pub last_window_save: std::time::Instant,
 }
 
 pub struct ScanResult {
@@ -129,6 +131,8 @@ impl App {
             filter_cache: None,
             scroll_to_idx: None,
             lang,
+            texture_cache: HashMap::new(),
+            last_window_save: std::time::Instant::now(),
         };
 
         if app.watched_paths.is_empty() {
@@ -142,6 +146,7 @@ impl App {
     }
 
     pub fn load_files_for_path(&mut self, path_id: i64) {
+        self.texture_cache.clear();
         self.loading_files = true;
         let db_guard = self.db.lock().unwrap();
         match db_guard.get_files_for_path(path_id) {
@@ -237,6 +242,10 @@ impl App {
         let result = Arc::new(files);
         self.filter_cache = Some((path_id, self.sort_by, self.search_query.clone(), self.rating_filter, self.tag_filter, Arc::clone(&result)));
         result
+    }
+
+    pub fn clear_texture_cache(&mut self) {
+        self.texture_cache.clear();
     }
 
     pub fn invalidate_cache(&mut self) {
@@ -405,6 +414,21 @@ impl App {
             drop(db_guard);
             self.apply_theme(ctx);
             self.theme_loaded = true;
+        }
+
+        if self.last_window_save.elapsed().as_secs() >= 5 {
+            let rect = ctx.input(|i| i.viewport().outer_rect);
+            if let Some(rect) = rect {
+                let mut config = crate::config::Config::load();
+                config.set_window_state(crate::config::WindowState {
+                    width: rect.width(),
+                    height: rect.height(),
+                    x: Some(rect.min.x),
+                    y: Some(rect.min.y),
+                });
+                let _ = config.save();
+            }
+            self.last_window_save = std::time::Instant::now();
         }
 
         // Toggle console with F12

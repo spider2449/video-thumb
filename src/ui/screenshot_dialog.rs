@@ -6,6 +6,8 @@ use std::time::Instant;
 
 const DEBOUNCE_MS: u128 = 100;
 
+type PreviewResult = Result<(image::RgbaImage, String), String>;
+
 pub struct ScreenshotDialog {
     pub file: FileEntry,
     pub current_time: f64,
@@ -14,26 +16,31 @@ pub struct ScreenshotDialog {
     pub is_loading: bool,
     pub thumbnail_size: [u32; 2],
     pub last_update_time: Instant,
-    pub last_preview_time: f64,  // Time shown in current preview
+    pub last_preview_time: f64,
+    preview_rx: Option<std::sync::mpsc::Receiver<PreviewResult>>,
+    duration_rx: Option<std::sync::mpsc::Receiver<f64>>,
 }
 
 impl ScreenshotDialog {
     pub fn new(file: FileEntry) -> Self {
-        // Get video duration using ffmpeg
-        let total_duration = Self::get_video_duration(&file.file_path).unwrap_or(60.0);
-
-        // Start at 5 seconds (or 1 second if video is short)
-        let start_time = if total_duration > 5.0 { 5.0 } else { 1.0 };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let video_path = file.file_path.clone();
+        std::thread::spawn(move || {
+            let duration = Self::get_video_duration(&video_path).unwrap_or(60.0);
+            let _ = tx.send(duration);
+        });
 
         Self {
             file,
-            current_time: start_time,
-            total_duration,
+            current_time: 1.0,
+            total_duration: 60.0,
             preview_texture: None,
             is_loading: false,
             thumbnail_size: [320, 180],
             last_update_time: Instant::now(),
-            last_preview_time: -1.0,  // No preview yet
+            last_preview_time: -1.0,
+            preview_rx: None,
+            duration_rx: Some(rx),
         }
     }
 
@@ -69,6 +76,15 @@ impl ScreenshotDialog {
             .default_size([600.0, 500.0])
             .min_size([500.0, 450.0])
             .show(ctx, |ui| {
+                if let Some(rx) = self.duration_rx.as_ref() {
+                    if let Ok(duration) = rx.try_recv() {
+                        self.total_duration = duration;
+                        self.current_time = if duration > 5.0 { 5.0 } else { 1.0 };
+                        self.last_preview_time = -1.0;
+                        self.duration_rx = None;
+                    }
+                }
+
                 let _available_width = ui.available_width();
 
                 ui.group(|ui| {
@@ -117,6 +133,32 @@ impl ScreenshotDialog {
                     });
                 });
 
+        if let Some(rx) = self.preview_rx.as_ref() {
+            if let Ok(result) = rx.try_recv() {
+                self.is_loading = false;
+                self.preview_rx = None;
+                match result {
+                    Ok((rgba, tex_name)) => {
+                        let colors: Vec<egui::Color32> = rgba.pixels()
+                            .map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+                            .collect();
+                        let color_img = egui::ColorImage {
+                            size: [rgba.width() as usize, rgba.height() as usize],
+                            pixels: colors,
+                        };
+                        self.preview_texture = Some(ctx.load_texture(
+                            tex_name,
+                            color_img,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
+                    Err(e) => {
+                        log::warn!("Preview generation failed: {}", e);
+                    }
+                }
+            }
+        }
+
         let time_changed_significantly = (self.current_time - prev_time).abs() > 0.001;
         if time_changed_significantly {
             self.last_update_time = Instant::now();
@@ -124,8 +166,8 @@ impl ScreenshotDialog {
 
         let elapsed = self.last_update_time.elapsed().as_millis();
         let preview_pending = (self.current_time - self.last_preview_time).abs() > 0.001;
-        if elapsed >= DEBOUNCE_MS && !self.is_loading && preview_pending {
-            self.update_preview(ctx);
+        if elapsed >= DEBOUNCE_MS && !self.is_loading && preview_pending && self.preview_rx.is_none() {
+            self.update_preview();
             self.last_preview_time = self.current_time;
         }
 
@@ -154,7 +196,7 @@ impl ScreenshotDialog {
         !close
     }
 
-    fn update_preview(&mut self, ctx: &egui::Context) {
+    fn update_preview(&mut self) {
         if self.is_loading {
             return;
         }
@@ -169,61 +211,57 @@ impl ScreenshotDialog {
         let video_path = self.file.file_path.clone();
         let time = self.current_time;
         let size = self.thumbnail_size;
-
-        // Generate preview at current time
+        let file_id = self.file.id;
         let data_dir = crate::utils::get_data_dir();
 
-        // Create temp preview file
-        let temp_path = data_dir.join(format!("preview_{}.jpg", self.file.id));
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.preview_rx = Some(rx);
 
-        let time_str = format!("{:02}:{:02}:{:02}.{:03}",
-            (time / 3600.0) as u32,
-            ((time % 3600.0) / 60.0) as u32,
-            (time % 60.0) as u32,
-            ((time % 1.0) * 1000.0) as u32
-        );
+        std::thread::spawn(move || {
+            let temp_path = data_dir.join(format!("preview_{}.jpg", file_id));
 
-        match std::process::Command::new(&ffmpeg_path)
-            .args(["-y", "-ss", &time_str])
-            .args(["-i", &video_path])
-            .args(["-vframes", "1"])
-            .args(["-vf", &format!("scale={}:{}", size[0], size[1])])
-            .args(["-q:v", "2"])
-            .arg(&temp_path)
-            .output()
-        {
-            Ok(output) => {
-                if output.status.success() && temp_path.exists() {
-                    // Load image and create texture
-                    if let Ok(img) = image::open(&temp_path) {
-                        let rgba = img.to_rgba8();
-                        let colors: Vec<egui::Color32> = rgba.pixels()
-                            .map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
-                            .collect();
-                        let color_img = egui::ColorImage {
-                            size: [rgba.width() as usize, rgba.height() as usize],
-                            pixels: colors,
-                        };
-                        self.preview_texture = Some(ctx.load_texture(
-                            format!("preview_{}", self.file.id),
-                            color_img,
-                            egui::TextureOptions::LINEAR,
-                        ));
+            let time_str = format!("{:02}:{:02}:{:02}.{:03}",
+                (time / 3600.0) as u32,
+                ((time % 3600.0) / 60.0) as u32,
+                (time % 60.0) as u32,
+                ((time % 1.0) * 1000.0) as u32
+            );
+
+            let result = match std::process::Command::new(&ffmpeg_path)
+                .args(["-y", "-ss", &time_str])
+                .args(["-i", &video_path])
+                .args(["-vframes", "1"])
+                .args(["-vf", &format!("scale={}:{}", size[0], size[1])])
+                .args(["-q:v", "2"])
+                .arg(&temp_path)
+                .output()
+            {
+                Ok(output) => {
+                    if output.status.success() && temp_path.exists() {
+                        match image::open(&temp_path) {
+                            Ok(img) => {
+                                let rgba = img.to_rgba8();
+                                let _ = std::fs::remove_file(&temp_path);
+                                Ok((rgba, format!("preview_{}", file_id)))
+                            }
+                            Err(e) => {
+                                let _ = std::fs::remove_file(&temp_path);
+                                Err(format!("Failed to decode preview image: {}", e))
+                            }
+                        }
+                    } else {
+                        let _ = std::fs::remove_file(&temp_path);
+                        Err(format!("ffmpeg failed: {}", String::from_utf8_lossy(&output.stderr)))
                     }
-                    // Clean up temp file
-                    let _ = std::fs::remove_file(&temp_path);
-                } else {
-                    log::warn!("Failed to generate preview: {}", String::from_utf8_lossy(&output.stderr));
                 }
-            }
-            Err(e) => {
-                log::error!("Failed to generate preview: {}", e);
-            }
-        }
-        // Ensure temp file is always cleaned up
-        let _ = std::fs::remove_file(&temp_path);
+                Err(e) => {
+                    let _ = std::fs::remove_file(&temp_path);
+                    Err(format!("Failed to run ffmpeg: {}", e))
+                }
+            };
 
-        self.is_loading = false;
+            let _ = tx.send(result);
+        });
     }
 
     fn capture_screenshot(&mut self, app: &mut App) {
@@ -261,7 +299,6 @@ impl ScreenshotDialog {
 
 impl Default for ScreenshotDialog {
     fn default() -> Self {
-        // Can't actually default without file, but required for Default trait
         Self {
             file: FileEntry {
                 id: 0, path_id: 0, file_path: String::new(), file_name: String::new(),
@@ -275,6 +312,8 @@ impl Default for ScreenshotDialog {
             thumbnail_size: [320, 180],
             last_update_time: Instant::now(),
             last_preview_time: -1.0,
+            preview_rx: None,
+            duration_rx: None,
         }
     }
 }

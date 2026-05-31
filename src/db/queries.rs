@@ -370,3 +370,450 @@ impl Database {
         Ok(deleted)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_db() -> Database {
+        Database::new_in_memory().expect("Failed to create in-memory database")
+    }
+
+    fn test_file(path_id: i64, file_path: &str) -> FileEntry {
+        let name = std::path::Path::new(file_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let ext = std::path::Path::new(file_path)
+            .extension()
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or_default();
+        FileEntry {
+            id: 0,
+            path_id,
+            file_path: file_path.to_string(),
+            file_name: name,
+            file_ext: ext,
+            thumbnail_path: None,
+            file_size: 1024,
+            modified_at: "2025-01-01 00:00:00".to_string(),
+            rating: 0,
+            has_custom_thumb: false,
+            created_at: String::new(),
+        }
+    }
+
+    // ============ Watched Paths ============
+
+    #[test]
+    fn test_add_and_get_paths() {
+        let db = test_db();
+        let id1 = db.add_path("/videos/a", "Folder A").unwrap();
+        let id2 = db.add_path("/videos/b", "Folder B").unwrap();
+        assert!(id1 > 0);
+        assert!(id2 > id1);
+
+        let paths = db.get_all_paths().unwrap();
+        assert_eq!(paths.len(), 2);
+        assert_eq!(paths[0].path, "/videos/a");
+        assert_eq!(paths[0].display_name, "Folder A");
+        assert_eq!(paths[1].path, "/videos/b");
+    }
+
+    #[test]
+    fn test_add_duplicate_path_fails() {
+        let db = test_db();
+        db.add_path("/videos/a", "A").unwrap();
+        assert!(db.add_path("/videos/a", "A duplicate").is_err());
+    }
+
+    #[test]
+    fn test_path_exists() {
+        let db = test_db();
+        assert!(!db.path_exists("/videos/a").unwrap());
+        db.add_path("/videos/a", "A").unwrap();
+        assert!(db.path_exists("/videos/a").unwrap());
+    }
+
+    #[test]
+    fn test_remove_path() {
+        let db = test_db();
+        let id = db.add_path("/videos/a", "A").unwrap();
+        db.remove_path(id).unwrap();
+        assert!(!db.path_exists("/videos/a").unwrap());
+        assert!(db.get_all_paths().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_remove_path_cascades_files() {
+        let db = test_db();
+        let path_id = db.add_path("/videos/a", "A").unwrap();
+        db.upsert_file(&test_file(path_id, "/videos/a/test.mp4")).unwrap();
+        db.remove_path(path_id).unwrap();
+        assert!(db.get_files_for_path(path_id).unwrap().is_empty());
+    }
+
+    // ============ Files ============
+
+    #[test]
+    fn test_upsert_and_get_files() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        assert!(file_id > 0);
+
+        let files = db.get_files_for_path(path_id).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_path, "/videos/a.mp4");
+        assert_eq!(files[0].file_name, "a.mp4");
+        assert_eq!(files[0].file_ext, "mp4");
+    }
+
+    #[test]
+    fn test_upsert_file_updates_existing() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+
+        let mut file = test_file(path_id, "/videos/a.mp4");
+        file.file_size = 100;
+        db.upsert_file(&file).unwrap();
+
+        file.file_size = 200;
+        db.upsert_file(&file).unwrap();
+
+        let files = db.get_files_for_path(path_id).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_size, 200);
+    }
+
+    #[test]
+    fn test_get_file_by_id() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        let file = db.get_file_by_id(file_id).unwrap().unwrap();
+        assert_eq!(file.file_path, "/videos/a.mp4");
+
+        assert!(db.get_file_by_id(99999).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_update_file_rating() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.update_file_rating(file_id, 4).unwrap();
+        let file = db.get_file_by_id(file_id).unwrap().unwrap();
+        assert_eq!(file.rating, 4);
+    }
+
+    #[test]
+    fn test_rating_clamped_to_valid_range() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.update_file_rating(file_id, 10).unwrap();
+        assert_eq!(db.get_file_by_id(file_id).unwrap().unwrap().rating, 5);
+
+        db.update_file_rating(file_id, -5).unwrap();
+        assert_eq!(db.get_file_by_id(file_id).unwrap().unwrap().rating, 0);
+    }
+
+    #[test]
+    fn test_update_thumbnail() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.update_thumbnail(file_id, "/thumbs/test.jpg").unwrap();
+        let file = db.get_file_by_id(file_id).unwrap().unwrap();
+        assert!(file.has_custom_thumb);
+    }
+
+    #[test]
+    fn test_delete_file() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.delete_file(file_id).unwrap();
+        assert!(db.get_file_by_id(file_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_move_file() {
+        let db = test_db();
+        let path_id1 = db.add_path("/videos/a", "A").unwrap();
+        let path_id2 = db.add_path("/videos/b", "B").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id1, "/videos/a/test.mp4")).unwrap();
+
+        db.move_file(file_id, path_id2, "/videos/b/test.mp4").unwrap();
+
+        assert!(db.get_files_for_path(path_id1).unwrap().is_empty());
+        let files = db.get_files_for_path(path_id2).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_path, "/videos/b/test.mp4");
+    }
+
+    // ============ Tags ============
+
+    #[test]
+    fn test_create_and_get_tags() {
+        let db = test_db();
+        let id = db.create_tag("Action", "#ff0000").unwrap();
+        assert!(id > 0);
+
+        let tags = db.get_all_tags().unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].name, "Action");
+        assert_eq!(tags[0].color, "#ff0000");
+    }
+
+    #[test]
+    fn test_update_tag() {
+        let db = test_db();
+        let id = db.create_tag("Action", "#ff0000").unwrap();
+        db.update_tag(id, "Comedy", "#00ff00").unwrap();
+
+        let tags = db.get_all_tags().unwrap();
+        assert_eq!(tags[0].name, "Comedy");
+        assert_eq!(tags[0].color, "#00ff00");
+    }
+
+    #[test]
+    fn test_delete_tag() {
+        let db = test_db();
+        let id = db.create_tag("Action", "#ff0000").unwrap();
+        db.delete_tag(id).unwrap();
+        assert!(db.get_all_tags().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_duplicate_tag_name_fails() {
+        let db = test_db();
+        db.create_tag("Action", "#ff0000").unwrap();
+        assert!(db.create_tag("Action", "#00ff00").is_err());
+    }
+
+    #[test]
+    fn test_add_and_get_tags_for_file() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let tag1 = db.create_tag("Action", "#ff0000").unwrap();
+        let tag2 = db.create_tag("Comedy", "#00ff00").unwrap();
+
+        db.add_tag_to_file(file_id, tag1).unwrap();
+        db.add_tag_to_file(file_id, tag2).unwrap();
+
+        let tags = db.get_tags_for_file(file_id).unwrap();
+        assert_eq!(tags.len(), 2);
+    }
+
+    #[test]
+    fn test_add_duplicate_tag_to_file_is_idempotent() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let tag_id = db.create_tag("Action", "#ff0000").unwrap();
+
+        db.add_tag_to_file(file_id, tag_id).unwrap();
+        db.add_tag_to_file(file_id, tag_id).unwrap();
+
+        assert_eq!(db.get_tags_for_file(file_id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_remove_tag_from_file() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let tag_id = db.create_tag("Action", "#ff0000").unwrap();
+
+        db.add_tag_to_file(file_id, tag_id).unwrap();
+        db.remove_tag_from_file(file_id, tag_id).unwrap();
+        assert!(db.get_tags_for_file(file_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_get_all_file_tags() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file1 = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let file2 = db.upsert_file(&test_file(path_id, "/videos/b.mp4")).unwrap();
+        let tag = db.create_tag("Action", "#ff0000").unwrap();
+
+        db.add_tag_to_file(file1, tag).unwrap();
+        db.add_tag_to_file(file2, tag).unwrap();
+
+        let map = db.get_all_file_tags(path_id).unwrap();
+        assert_eq!(map.len(), 2);
+        assert!(map[&file1].contains(&tag));
+        assert!(map[&file2].contains(&tag));
+    }
+
+    #[test]
+    fn test_delete_tag_cascades_file_tags() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let tag_id = db.create_tag("Action", "#ff0000").unwrap();
+        db.add_tag_to_file(file_id, tag_id).unwrap();
+
+        db.delete_tag(tag_id).unwrap();
+        assert!(db.get_tags_for_file(file_id).unwrap().is_empty());
+    }
+
+    // ============ Thumbnails ============
+
+    #[test]
+    fn test_set_and_get_thumb_filename() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.set_thumb_filename(file_id, "abc-123.jpg").unwrap();
+        let filename = db.get_thumb_filename(file_id).unwrap();
+        assert_eq!(filename, Some("abc-123.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_set_thumb_replaces_existing() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.set_thumb_filename(file_id, "old.jpg").unwrap();
+        db.set_thumb_filename(file_id, "new.jpg").unwrap();
+        assert_eq!(db.get_thumb_filename(file_id).unwrap(), Some("new.jpg".to_string()));
+    }
+
+    #[test]
+    fn test_delete_thumb_mapping() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+
+        db.set_thumb_filename(file_id, "test.jpg").unwrap();
+        db.delete_thumb_mapping(file_id).unwrap();
+        assert_eq!(db.get_thumb_filename(file_id).unwrap(), None);
+    }
+
+    #[test]
+    fn test_get_all_thumb_filenames() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let f1 = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let f2 = db.upsert_file(&test_file(path_id, "/videos/b.mp4")).unwrap();
+
+        db.set_thumb_filename(f1, "thumb1.jpg").unwrap();
+        db.set_thumb_filename(f2, "thumb2.jpg").unwrap();
+
+        let mut filenames = db.get_all_thumb_filenames().unwrap();
+        filenames.sort();
+        assert_eq!(filenames, vec!["thumb1.jpg", "thumb2.jpg"]);
+    }
+
+    #[test]
+    fn test_get_thumb_filename_nonexistent() {
+        let db = test_db();
+        assert_eq!(db.get_thumb_filename(99999).unwrap(), None);
+    }
+
+    // ============ Settings ============
+
+    #[test]
+    fn test_default_settings_exist() {
+        let db = test_db();
+        assert!(db.get_setting("video_extensions").unwrap().is_some());
+        assert!(db.get_setting("thumb_size").unwrap().is_some());
+        assert!(db.get_setting("default_player").unwrap().is_some());
+    }
+
+    #[test]
+    fn test_set_and_get_setting() {
+        let db = test_db();
+        db.set_setting("custom_key", "custom_value").unwrap();
+        assert_eq!(db.get_setting("custom_key").unwrap(), Some("custom_value".to_string()));
+    }
+
+    #[test]
+    fn test_set_setting_overwrites() {
+        let db = test_db();
+        db.set_setting("key", "v1").unwrap();
+        db.set_setting("key", "v2").unwrap();
+        assert_eq!(db.get_setting("key").unwrap(), Some("v2".to_string()));
+    }
+
+    #[test]
+    fn test_get_nonexistent_setting() {
+        let db = test_db();
+        assert_eq!(db.get_setting("nonexistent").unwrap(), None);
+    }
+
+    #[test]
+    fn test_get_video_extensions() {
+        let db = test_db();
+        let exts = db.get_video_extensions();
+        assert!(exts.contains(&"mp4".to_string()));
+        assert!(exts.contains(&"mkv".to_string()));
+        assert!(exts.contains(&"avi".to_string()));
+    }
+
+    // ============ Cascade / Integrity ============
+
+    #[test]
+    fn test_delete_file_cascades_file_tags() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        let tag_id = db.create_tag("Action", "#ff0000").unwrap();
+        db.add_tag_to_file(file_id, tag_id).unwrap();
+
+        db.delete_file(file_id).unwrap();
+        assert!(db.get_tags_for_file(file_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_delete_file_cascades_thumb_mapping() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let file_id = db.upsert_file(&test_file(path_id, "/videos/a.mp4")).unwrap();
+        db.set_thumb_filename(file_id, "test.jpg").unwrap();
+
+        db.delete_file(file_id).unwrap();
+        assert_eq!(db.get_thumb_filename(file_id).unwrap(), None);
+    }
+
+    #[test]
+    fn test_rating_constraint_via_upsert() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        let mut file = test_file(path_id, "/videos/a.mp4");
+        file.rating = 3;
+        db.upsert_file(&file).unwrap();
+
+        let files = db.get_files_for_path(path_id).unwrap();
+        assert_eq!(files[0].rating, 3);
+    }
+
+    #[test]
+    fn test_get_files_for_path_only_returns_matching_path() {
+        let db = test_db();
+        let p1 = db.add_path("/a", "A").unwrap();
+        let p2 = db.add_path("/b", "B").unwrap();
+        db.upsert_file(&test_file(p1, "/a/one.mp4")).unwrap();
+        db.upsert_file(&test_file(p2, "/b/two.mp4")).unwrap();
+
+        let files_a = db.get_files_for_path(p1).unwrap();
+        let files_b = db.get_files_for_path(p2).unwrap();
+        assert_eq!(files_a.len(), 1);
+        assert_eq!(files_b.len(), 1);
+        assert_eq!(files_a[0].file_path, "/a/one.mp4");
+        assert_eq!(files_b[0].file_path, "/b/two.mp4");
+    }
+}

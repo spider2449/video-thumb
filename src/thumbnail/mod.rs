@@ -279,6 +279,10 @@ impl ThumbnailGenerator {
                 c.arg(video_path);
                 c
             }
+            #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+            {
+                return Err("No default video player configured for this platform. Please set a custom player in settings.".to_string());
+            }
         } else {
             let mut c = Command::new(player_path);
             c.arg(video_path);
