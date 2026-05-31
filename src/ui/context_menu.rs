@@ -203,7 +203,7 @@ impl ContextMenu {
             .unwrap_or_default();
 
         let root_dir = crate::utils::get_data_dir();
-        let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
+        let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
         generator.play_video(file_path, &player).ok();
     }
 
@@ -263,9 +263,9 @@ impl ContextMenu {
         };
 
         let root_dir = crate::utils::get_data_dir();
-        let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
+        let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
 
-        if let Ok(thumb_path) = generator.generate_thumbnail_at_time(&file.file_path, time_seconds) {
+        if let Ok(thumb_path) = generator.generate_thumbnail_at_time(&file.file_path, time_seconds, Some(file.id)) {
             app.db.blocking_lock()
                 .update_thumbnail(file.id, &thumb_path)
                 .ok();
@@ -275,11 +275,11 @@ impl ContextMenu {
     fn reset_thumbnail_internal(&self, file: &FileEntry, app: &mut App) {
         if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
             let root_dir = crate::utils::get_data_dir();
-            let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
+            let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
 
-            generator.delete_thumbnail(&file.file_path);
+            generator.delete_thumbnail(&file.file_path, Some(file.id));
 
-            if let Ok(thumb_path) = generator.generate_thumbnail(&file.file_path) {
+            if let Ok(thumb_path) = generator.generate_thumbnail(&file.file_path, Some(file.id)) {
                 app.db.blocking_lock()
                     .update_thumbnail(file.id, &thumb_path)
                     .ok();
@@ -326,8 +326,8 @@ impl ContextMenu {
 
         if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
             let root_dir = crate::utils::get_data_dir();
-            let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path);
-            generator.delete_thumbnail(&file.file_path);
+            let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
+            generator.delete_thumbnail(&file.file_path, Some(file.id));
         }
 
         self.file = None;
