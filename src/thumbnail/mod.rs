@@ -32,9 +32,13 @@ impl ThumbnailGenerator {
     pub fn get_thumbnail_path(&self, video_path: &str, file_id: Option<i64>) -> PathBuf {
         if let Some(fid) = file_id {
             if let Ok(Some(filename)) = self.db.blocking_lock().get_thumb_filename(fid) {
-                let path = self.get_thumbs_dir().join(&filename);
-                if path.exists() {
-                    return path;
+                if !filename.contains('/') && !filename.contains('\\') && !filename.contains("..") {
+                    let path = self.get_thumbs_dir().join(&filename);
+                    if path.exists() {
+                        return path;
+                    }
+                } else {
+                    log::error!("Invalid thumbnail filename from DB for file_id={}: {}", fid, filename);
                 }
             }
         }
@@ -47,21 +51,21 @@ impl ThumbnailGenerator {
                 let uuid = uuid::Uuid::new_v4().to_string();
                 let new_filename = format!("{}.jpg", uuid);
                 let new_path = self.get_thumbs_dir().join(&new_filename);
+                let db = self.db.blocking_lock();
                 if std::fs::rename(&md5_path, &new_path).is_ok() {
-                    let _ = self.db.blocking_lock().set_thumb_filename(fid, &new_filename);
-                    info!("Migrated MD5 thumbnail to UUID: {} -> {}", md5_path.display(), new_path.display());
+                    if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
+                        log::error!("Failed to save mapping for file_id={}: {}", fid, e);
+                        let _ = std::fs::rename(&new_path, &md5_path);
+                        return md5_path;
+                    }
+                    info!("Migrated MD5 thumbnail to UUID for file_id={}", fid);
                     return new_path;
                 }
             }
             return md5_path;
         }
 
-        if let Some(_fid) = file_id {
-            let uuid = uuid::Uuid::new_v4().to_string();
-            self.get_thumbs_dir().join(format!("{}.jpg", uuid))
-        } else {
-            md5_path
-        }
+        md5_path
     }
 
     pub fn thumbnail_exists(&self, video_path: &str, file_id: Option<i64>) -> bool {
@@ -96,10 +100,17 @@ impl ThumbnailGenerator {
             return Err(format!("ffmpeg failed: {}", stderr));
         }
 
-        if let Some(fid) = file_id {
-            if let Some(filename) = thumb_path.file_name().map(|f| f.to_string_lossy().to_string()) {
-                let _ = self.db.blocking_lock().set_thumb_filename(fid, &filename);
+        let uuid = uuid::Uuid::new_v4().to_string();
+        let new_filename = format!("{}.jpg", uuid);
+        let final_path = self.get_thumbs_dir().join(&new_filename);
+        if std::fs::rename(&thumb_path, &final_path).is_ok() {
+            if let Some(fid) = file_id {
+                if let Err(e) = self.db.blocking_lock().set_thumb_filename(fid, &new_filename) {
+                    log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
+                }
             }
+            info!("Thumbnail generated: {:?}", final_path);
+            return Ok(final_path.to_string_lossy().to_string());
         }
 
         info!("Thumbnail generated: {:?}", thumb_path);
@@ -135,10 +146,17 @@ impl ThumbnailGenerator {
             return Err(format!("ffmpeg failed: {}", stderr));
         }
 
-        if let Some(fid) = file_id {
-            if let Some(filename) = thumb_path.file_name().map(|f| f.to_string_lossy().to_string()) {
-                let _ = self.db.blocking_lock().set_thumb_filename(fid, &filename);
+        let uuid = uuid::Uuid::new_v4().to_string();
+        let new_filename = format!("{}.jpg", uuid);
+        let final_path = self.get_thumbs_dir().join(&new_filename);
+        if std::fs::rename(&thumb_path, &final_path).is_ok() {
+            if let Some(fid) = file_id {
+                if let Err(e) = self.db.blocking_lock().set_thumb_filename(fid, &new_filename) {
+                    log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
+                }
             }
+            info!("Thumbnail generated: {:?}", final_path);
+            return Ok(final_path.to_string_lossy().to_string());
         }
 
         info!("Thumbnail generated: {:?}", thumb_path);
@@ -216,10 +234,17 @@ impl ThumbnailGenerator {
             return Err(format!("ffmpeg failed: {}", stderr));
         }
 
-        if let Some(fid) = file_id {
-            if let Some(filename) = thumb_path.file_name().map(|f| f.to_string_lossy().to_string()) {
-                let _ = self.db.blocking_lock().set_thumb_filename(fid, &filename);
+        let uuid = uuid::Uuid::new_v4().to_string();
+        let new_filename = format!("{}.jpg", uuid);
+        let final_path = self.get_thumbs_dir().join(&new_filename);
+        if std::fs::rename(&thumb_path, &final_path).is_ok() {
+            if let Some(fid) = file_id {
+                if let Err(e) = self.db.blocking_lock().set_thumb_filename(fid, &new_filename) {
+                    log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
+                }
             }
+            info!("Thumbnail generated: {:?}", final_path);
+            return Ok(final_path.to_string_lossy().to_string());
         }
 
         info!("Thumbnail generated: {:?}", thumb_path);
@@ -269,7 +294,9 @@ impl ThumbnailGenerator {
                         info!("Deleted thumbnail: {:?}", thumb_path);
                     }
                 }
-                let _ = self.db.blocking_lock().delete_thumb_mapping(fid);
+                if let Err(e) = self.db.blocking_lock().delete_thumb_mapping(fid) {
+                    log::error!("Failed to delete thumbnail mapping for file_id={}: {}", fid, e);
+                }
             }
         }
 
