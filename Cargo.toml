@@ -21,6 +21,7 @@ image = "0.25"
 
 # Utilities
 md5 = "0.7"
+uuid = { version = "1", features = ["v4"] }
 walkdir = "2.5"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
