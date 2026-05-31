@@ -2,21 +2,26 @@ use log::{error, info};
 use md5;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use crate::db::Database;
 
 pub struct ThumbnailGenerator {
     root_dir: PathBuf,
     ffmpeg_path: PathBuf,
     width: u32,
     height: u32,
+    db: Arc<Mutex<Database>>,
 }
 
 impl ThumbnailGenerator {
-    pub fn new(root_dir: &Path, ffmpeg_path: &Path) -> Self {
+    pub fn new(root_dir: &Path, ffmpeg_path: &Path, db: Arc<Mutex<Database>>) -> Self {
         Self {
             root_dir: root_dir.to_path_buf(),
             ffmpeg_path: ffmpeg_path.to_path_buf(),
             width: 384,
             height: 216,
+            db,
         }
     }
 
@@ -24,17 +29,47 @@ impl ThumbnailGenerator {
         self.root_dir.join("thumbs")
     }
 
-    pub fn get_thumbnail_path(&self, video_path: &str) -> PathBuf {
+    pub fn get_thumbnail_path(&self, video_path: &str, file_id: Option<i64>) -> PathBuf {
+        if let Some(fid) = file_id {
+            if let Ok(Some(filename)) = self.db.blocking_lock().get_thumb_filename(fid) {
+                let path = self.get_thumbs_dir().join(&filename);
+                if path.exists() {
+                    return path;
+                }
+            }
+        }
+
         let hash = format!("{:x}", md5::compute(video_path.as_bytes()));
-        self.get_thumbs_dir().join(format!("{}.jpg", hash))
+        let md5_path = self.get_thumbs_dir().join(format!("{}.jpg", hash));
+
+        if md5_path.exists() {
+            if let Some(fid) = file_id {
+                let uuid = uuid::Uuid::new_v4().to_string();
+                let new_filename = format!("{}.jpg", uuid);
+                let new_path = self.get_thumbs_dir().join(&new_filename);
+                if std::fs::rename(&md5_path, &new_path).is_ok() {
+                    let _ = self.db.blocking_lock().set_thumb_filename(fid, &new_filename);
+                    info!("Migrated MD5 thumbnail to UUID: {} -> {}", md5_path.display(), new_path.display());
+                    return new_path;
+                }
+            }
+            return md5_path;
+        }
+
+        if let Some(_fid) = file_id {
+            let uuid = uuid::Uuid::new_v4().to_string();
+            self.get_thumbs_dir().join(format!("{}.jpg", uuid))
+        } else {
+            md5_path
+        }
     }
 
-    pub fn thumbnail_exists(&self, video_path: &str) -> bool {
-        self.get_thumbnail_path(video_path).exists()
+    pub fn thumbnail_exists(&self, video_path: &str, file_id: Option<i64>) -> bool {
+        self.get_thumbnail_path(video_path, file_id).exists()
     }
 
-    pub fn generate_thumbnail(&self, video_path: &str) -> Result<String, String> {
-        let thumb_path = self.get_thumbnail_path(video_path);
+    pub fn generate_thumbnail(&self, video_path: &str, file_id: Option<i64>) -> Result<String, String> {
+        let thumb_path = self.get_thumbnail_path(video_path, file_id);
 
         if thumb_path.exists() {
             info!("Thumbnail already exists: {:?}", thumb_path);
@@ -61,12 +96,18 @@ impl ThumbnailGenerator {
             return Err(format!("ffmpeg failed: {}", stderr));
         }
 
+        if let Some(fid) = file_id {
+            if let Some(filename) = thumb_path.file_name().map(|f| f.to_string_lossy().to_string()) {
+                let _ = self.db.blocking_lock().set_thumb_filename(fid, &filename);
+            }
+        }
+
         info!("Thumbnail generated: {:?}", thumb_path);
         Ok(thumb_path.to_string_lossy().to_string())
     }
 
-    pub fn generate_thumbnail_at_time(&self, video_path: &str, time_seconds: f64) -> Result<String, String> {
-        let thumb_path = self.get_thumbnail_path(video_path);
+    pub fn generate_thumbnail_at_time(&self, video_path: &str, time_seconds: f64, file_id: Option<i64>) -> Result<String, String> {
+        let thumb_path = self.get_thumbnail_path(video_path, file_id);
 
         std::fs::create_dir_all(self.get_thumbs_dir())
             .map_err(|e| format!("Failed to create thumbs directory: {}", e))?;
@@ -94,13 +135,17 @@ impl ThumbnailGenerator {
             return Err(format!("ffmpeg failed: {}", stderr));
         }
 
+        if let Some(fid) = file_id {
+            if let Some(filename) = thumb_path.file_name().map(|f| f.to_string_lossy().to_string()) {
+                let _ = self.db.blocking_lock().set_thumb_filename(fid, &filename);
+            }
+        }
+
         info!("Thumbnail generated: {:?}", thumb_path);
         Ok(thumb_path.to_string_lossy().to_string())
     }
 
-    /// Get frame count using ffprobe
     fn get_frame_count(&self, video_path: &str) -> Result<u32, String> {
-        // Try ffprobe with ffmpeg binary first (ffprobe is usually bundled with ffmpeg)
         let ffprobe_path = self.ffmpeg_path.parent()
             .map(|p| p.join(if cfg!(target_os = "windows") { "ffprobe.exe" } else { "ffprobe" }))
             .unwrap_or_else(|| PathBuf::from(if cfg!(target_os = "windows") { "ffprobe.exe" } else { "ffprobe" }));
@@ -124,9 +169,8 @@ impl ThumbnailGenerator {
         }
     }
 
-    /// Generate thumbnail at specific frame, falls back to frame 1 if video too short
-    pub fn generate_thumbnail_at_frame(&self, video_path: &str, target_frame: u32) -> Result<String, String> {
-        let thumb_path = self.get_thumbnail_path(video_path);
+    pub fn generate_thumbnail_at_frame(&self, video_path: &str, target_frame: u32, file_id: Option<i64>) -> Result<String, String> {
+        let thumb_path = self.get_thumbnail_path(video_path, file_id);
 
         if thumb_path.exists() {
             info!("Thumbnail already exists: {:?}", thumb_path);
@@ -136,7 +180,6 @@ impl ThumbnailGenerator {
         std::fs::create_dir_all(self.get_thumbs_dir())
             .map_err(|e| format!("Failed to create thumbs directory: {}", e))?;
 
-        // Get frame count if possible
         let frame_to_use = match self.get_frame_count(video_path) {
             Ok(count) => {
                 if count >= target_frame {
@@ -154,7 +197,6 @@ impl ThumbnailGenerator {
 
         info!("Generating thumbnail at frame {} for: {}", frame_to_use, video_path);
 
-        // ffmpeg select uses 0-based index, so frame 1 is "eq(n\,0)"
         let frame_idx = frame_to_use.saturating_sub(1);
         let output = Command::new(&self.ffmpeg_path)
             .args(["-y", "-i", video_path])
@@ -167,12 +209,17 @@ impl ThumbnailGenerator {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            // If target frame failed, try frame 1
             if frame_to_use != 1 {
                 log::warn!("Frame {} failed, trying frame 1: {}", frame_to_use, stderr);
-                return self.generate_thumbnail_at_frame(video_path, 1);
+                return self.generate_thumbnail_at_frame(video_path, 1, file_id);
             }
             return Err(format!("ffmpeg failed: {}", stderr));
+        }
+
+        if let Some(fid) = file_id {
+            if let Some(filename) = thumb_path.file_name().map(|f| f.to_string_lossy().to_string()) {
+                let _ = self.db.blocking_lock().set_thumb_filename(fid, &filename);
+            }
         }
 
         info!("Thumbnail generated: {:?}", thumb_path);
@@ -211,13 +258,26 @@ impl ThumbnailGenerator {
         Ok(())
     }
 
-    pub fn delete_thumbnail(&self, file_path: &str) {
-        let thumb_path = self.get_thumbnail_path(file_path);
-        if thumb_path.exists() {
-            if let Err(e) = std::fs::remove_file(&thumb_path) {
-                error!("Failed to delete thumbnail: {}", e);
-            } else {
-                info!("Deleted thumbnail: {:?}", thumb_path);
+    pub fn delete_thumbnail(&self, file_path: &str, file_id: Option<i64>) {
+        if let Some(fid) = file_id {
+            if let Ok(Some(filename)) = self.db.blocking_lock().get_thumb_filename(fid) {
+                let thumb_path = self.get_thumbs_dir().join(&filename);
+                if thumb_path.exists() {
+                    if let Err(e) = std::fs::remove_file(&thumb_path) {
+                        error!("Failed to delete thumbnail: {}", e);
+                    } else {
+                        info!("Deleted thumbnail: {:?}", thumb_path);
+                    }
+                }
+                let _ = self.db.blocking_lock().delete_thumb_mapping(fid);
+            }
+        }
+
+        let hash = format!("{:x}", md5::compute(file_path.as_bytes()));
+        let md5_path = self.get_thumbs_dir().join(format!("{}.jpg", hash));
+        if md5_path.exists() {
+            if let Err(e) = std::fs::remove_file(&md5_path) {
+                error!("Failed to delete MD5 thumbnail: {}", e);
             }
         }
     }
