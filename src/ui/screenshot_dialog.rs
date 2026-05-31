@@ -58,11 +58,11 @@ impl ScreenshotDialog {
         let close_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let capture_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        // Clone for use inside closure
         let close_clone = close_requested.clone();
         let capture_clone = capture_requested.clone();
+        let lang = app.lang;
 
-        egui::Window::new("截圖 - 選擇時間點")
+        egui::Window::new(crate::lang::t(lang, "screenshot_title"))
             .collapsible(false)
             .resizable(true)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -71,11 +71,9 @@ impl ScreenshotDialog {
             .show(ctx, |ui| {
                 let _available_width = ui.available_width();
 
-                // Preview area
                 ui.group(|ui| {
                     ui.set_min_height(200.0);
 
-                    // Show preview or loading indicator
                     if let Some(texture) = &self.preview_texture {
                         let size = egui::Vec2::new(
                             self.thumbnail_size[0] as f32,
@@ -89,45 +87,41 @@ impl ScreenshotDialog {
                         );
                     } else if self.is_loading {
                         ui.centered_and_justified(|ui| {
-                            ui.label("載入中...");
+                            ui.label(crate::lang::t(lang, "loading"));
                         });
                     } else {
                         ui.centered_and_justified(|ui| {
-                            ui.label("拖動時間軸預覽");
+                            ui.label(crate::lang::t(lang, "drag_timeline"));
                         });
                     }
                 });
 
                 ui.add_space(8.0);
 
-                // Timeline slider - full video duration, full width
                 let prev_time = self.current_time;
-                ui.label(format!("時間: {:?}", self.current_time));
+                ui.label(format!("{}{:?}", crate::lang::t(lang, "time_prefix"), self.current_time));
                 ui.add(
                     egui::Slider::new(&mut self.current_time, 0.0..=self.total_duration)
                         .show_value(true)
-                        .text("時間軸"),
+                        .text(crate::lang::t(lang, "timeline")),
                 );
 
-                // Time display
                 let total_mins = (self.total_duration / 60.0) as u32;
                 let total_secs = (self.total_duration % 60.0) as u32;
                 let mins = (self.current_time / 60.0) as u32;
                 let secs = (self.current_time % 60.0) as u32;
                 ui.horizontal(|ui| {
-                    ui.label(format!("當前: {:02}:{:02}", mins, secs));
+                    ui.label(format!("{}{:02}:{:02}", crate::lang::t(lang, "current_prefix"), mins, secs));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("總長: {:02}:{:02}", total_mins, total_secs));
+                        ui.label(format!("{}{:02}:{:02}", crate::lang::t(lang, "total_prefix"), total_mins, total_secs));
                     });
                 });
 
-        // Debounced preview update
         let time_changed_significantly = (self.current_time - prev_time).abs() > 0.001;
         if time_changed_significantly {
             self.last_update_time = Instant::now();
         }
 
-        // Update preview after debounce period when time has settled
         let elapsed = self.last_update_time.elapsed().as_millis();
         let preview_pending = (self.current_time - self.last_preview_time).abs() > 0.001;
         if elapsed >= DEBOUNCE_MS && !self.is_loading && preview_pending {
@@ -137,13 +131,12 @@ impl ScreenshotDialog {
 
                 ui.add_space(16.0);
 
-                // Buttons
                 ui.horizontal(|ui| {
-                    if ui.button("取消").clicked() {
+                    if ui.button(crate::lang::t(lang, "cancel")).clicked() {
                         close_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("截圖").clicked() {
+                        if ui.button(crate::lang::t(lang, "capture")).clicked() {
                             capture_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                             close_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                         }

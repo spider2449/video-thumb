@@ -1,4 +1,5 @@
 use crate::db::{Database, FileEntry, WatchedPath};
+use crate::lang::Lang;
 use crate::ui::{MainWindow, SettingsDialog, TagManager};
 use eframe::egui;
 use std::collections::HashMap;
@@ -48,6 +49,8 @@ pub struct App {
     pub current_theme: String,
     // Scroll target for keyboard navigation
     pub scroll_to_idx: Option<usize>,
+    // Language
+    pub lang: Lang,
 }
 
 pub struct ScanResult {
@@ -81,6 +84,9 @@ impl App {
 
         let watched_paths = db.lock().unwrap().get_all_paths().unwrap_or_default();
         let tags = db.lock().unwrap().get_all_tags().unwrap_or_default();
+        let lang = Lang::from_setting(
+            &db.lock().unwrap().get_setting("language").ok().flatten().unwrap_or_else(|| "zh_tw".to_string())
+        );
 
         let mut app = Self {
             db,
@@ -120,6 +126,7 @@ impl App {
             thumb_done_rx: None,
             filter_cache: None,
             scroll_to_idx: None,
+            lang,
         };
 
         if app.watched_paths.is_empty() {
@@ -257,16 +264,16 @@ impl App {
 
     pub fn add_path(&mut self) {
         if self.add_path_path.is_empty() {
-            self.add_path_error = Some("請選擇資料夾路徑".to_string());
+            self.add_path_error = Some(crate::lang::t(self.lang, "select_folder_path").to_string());
             return;
         }
         let path = std::path::Path::new(&self.add_path_path);
         if !path.exists() {
-            self.add_path_error = Some("路徑不存在".to_string());
+            self.add_path_error = Some(crate::lang::t(self.lang, "path_not_exist").to_string());
             return;
         }
         if !path.is_dir() {
-            self.add_path_error = Some("路徑不是有效的資料夾".to_string());
+            self.add_path_error = Some(crate::lang::t(self.lang, "path_not_dir").to_string());
             return;
         }
 
@@ -283,7 +290,7 @@ impl App {
 
         match db.path_exists(&path_str) {
             Ok(true) => {
-                self.add_path_error = Some("此路徑已存在".to_string());
+                self.add_path_error = Some(crate::lang::t(self.lang, "path_already_exists").to_string());
             }
             Ok(false) => {
                 match db.add_path(&path_str, &display_name) {
@@ -303,12 +310,12 @@ impl App {
                         self.load_files_for_path(id);
                     }
                     Err(e) => {
-                        self.add_path_error = Some(format!("新增失敗: {}", e));
+                        self.add_path_error = Some(format!("{}{}", crate::lang::t(self.lang, "add_failed_prefix"), e));
                     }
                 }
             }
             Err(e) => {
-                self.add_path_error = Some(format!("查詢失敗: {}", e));
+                self.add_path_error = Some(format!("{}{}", crate::lang::t(self.lang, "query_failed_prefix"), e));
             }
         }
     }
@@ -335,7 +342,7 @@ impl App {
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         self.thumbnail_progress = Some((0, total));
-        self.scan_status = format!("生成縮圖中... 0/{}", total);
+        self.scan_status = format!("{}0{}{}", crate::lang::t(self.lang, "generating_thumbs_prefix"), crate::lang::t(self.lang, "generating_thumbs_sep"), total);
 
         // Drop any orphaned channels from previous generation
         self.thumb_progress_rx = None;
@@ -408,7 +415,7 @@ impl App {
             if let Ok(result) = rx.try_recv() {
                 self.scanning = false;
                 if result.success {
-                    self.scan_status = format!("完成！找到 {} 個檔案", result.count);
+                    self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), result.count, crate::lang::t(self.lang, "done_found_suffix"));
                     // Always reload cache immediately after scan
                     self.load_files_for_path(result.path_id);
                     // Start thumbnail generation in background if needed
@@ -416,7 +423,7 @@ impl App {
                         self.start_thumbnail_generation(result.files_needing_thumbnails, result.path_id);
                     }
                 } else {
-                    self.scan_status = format!("失敗: {}", result.message);
+                    self.scan_status = format!("{}{}", crate::lang::t(self.lang, "failed_prefix"), result.message);
                 }
                 // Force UI update by requesting a repaint
                 ctx.request_repaint();
@@ -431,7 +438,7 @@ impl App {
             while let Ok(completed) = rx.try_recv() {
                 if let Some((_, total)) = self.thumbnail_progress {
                     self.thumbnail_progress = Some((completed, total));
-                    self.scan_status = format!("生成縮圖中... {}/{}", completed, total);
+                    self.scan_status = format!("{}{}{}{}", crate::lang::t(self.lang, "generating_thumbs_prefix"), completed, crate::lang::t(self.lang, "generating_thumbs_sep"), total);
                     needs_repaint = true;
                 }
             }
@@ -444,7 +451,7 @@ impl App {
         if let Some(rx) = self.thumb_done_rx.take() {
             if let Ok(path_id) = rx.try_recv() {
                 self.thumbnail_progress = None;
-                self.scan_status = format!("完成！找到 {} 個檔案", self.files.get(&path_id).map(|f| f.len()).unwrap_or(0));
+                self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), self.files.get(&path_id).map(|f| f.len()).unwrap_or(0), crate::lang::t(self.lang, "done_found_suffix"));
                 self.load_files_for_path(path_id);
                 ctx.request_repaint();
             } else {

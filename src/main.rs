@@ -1,6 +1,7 @@
 mod app;
 mod config;
 mod db;
+mod lang;
 mod scanner;
 mod thumbnail;
 mod ui;

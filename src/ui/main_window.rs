@@ -14,20 +14,21 @@ impl MainWindow {
     pub fn show_main(ctx: &egui::Context, app: &mut App) {
         let _available_width = ctx.input(|i| i.screen_rect.width()) - 40.0;
         let _cols = ((_available_width / app.thumbnail_size) as usize).max(1);
+        let lang = app.lang;
 
         // Toolbar
         egui::TopBottomPanel::top("toolbar")
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("+ 新增路徑").clicked() {
+                    if ui.button(crate::lang::t(lang, "add_path")).clicked() {
                         app.show_add_path = true;
                         app.reset_add_path_dialog();
                     }
 
                     let scan_text = if app.scanning {
-                        format!("掃描中... {:.0}%", app.scan_progress * 100.0)
+                        format!("{}{:.0}{}", crate::lang::t(lang, "scanning_prefix"), app.scan_progress * 100.0, crate::lang::t(lang, "scanning_suffix"))
                     } else {
-                        "🔄 更新資料庫".to_string()
+                        crate::lang::t(lang, "update_db").to_string()
                     };
 
                     ui.add_enabled_ui(!app.scanning, |ui| {
@@ -36,24 +37,24 @@ impl MainWindow {
                         }
                     });
 
-                    if ui.button("🗑 Rescan thumbs").clicked() {
+                    if ui.button(crate::lang::t(lang, "rescan_thumbs")).clicked() {
                         Self::clean_unused_thumbnails(app);
                     }
 
                     ui.separator();
 
-                    ui.menu_button("排序", |ui| {
-                        if ui.selectable_label(app.sort_by == SortBy::Name, "名稱").clicked() {
+                    ui.menu_button(crate::lang::t(lang, "sort"), |ui| {
+                        if ui.selectable_label(app.sort_by == SortBy::Name, crate::lang::t(lang, "name")).clicked() {
                             app.sort_by = SortBy::Name;
                             app.invalidate_cache();
                             ui.close_menu();
                         }
-                        if ui.selectable_label(app.sort_by == SortBy::Date, "日期").clicked() {
+                        if ui.selectable_label(app.sort_by == SortBy::Date, crate::lang::t(lang, "date")).clicked() {
                             app.sort_by = SortBy::Date;
                             app.invalidate_cache();
                             ui.close_menu();
                         }
-                        if ui.selectable_label(app.sort_by == SortBy::Rating, "評分").clicked() {
+                        if ui.selectable_label(app.sort_by == SortBy::Rating, crate::lang::t(lang, "rating")).clicked() {
                             app.sort_by = SortBy::Rating;
                             app.invalidate_cache();
                             ui.close_menu();
@@ -62,19 +63,19 @@ impl MainWindow {
 
                     ui.separator();
 
-                    ui.label("搜尋:");
+                    ui.label(crate::lang::t(lang, "search"));
                     ui.text_edit_singleline(&mut app.search_query);
 
                     ui.separator();
 
-                    ui.menu_button("評分篩選", |ui| {
-                        if ui.selectable_label(app.rating_filter.is_none(), "全部").clicked() {
+                    ui.menu_button(crate::lang::t(lang, "rating_filter"), |ui| {
+                        if ui.selectable_label(app.rating_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
                             app.rating_filter = None;
                             app.invalidate_cache();
                             ui.close_menu();
                         }
                         for i in 1..=5 {
-                            let label = format!("{} 星", i);
+                            let label = format!("{}{}", i, crate::lang::t(lang, "stars_suffix"));
                             if ui.selectable_label(app.rating_filter == Some(i), &label).clicked() {
                                 app.rating_filter = Some(i);
                                 app.invalidate_cache();
@@ -86,8 +87,8 @@ impl MainWindow {
                     ui.separator();
 
                     if !app.tags.is_empty() {
-                        ui.menu_button("標籤篩選", |ui| {
-                            if ui.selectable_label(app.tag_filter.is_none(), "全部").clicked() {
+                        ui.menu_button(crate::lang::t(lang, "tag_filter"), |ui| {
+                            if ui.selectable_label(app.tag_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
                                 app.tag_filter = None;
                                 app.invalidate_cache();
                                 ui.close_menu();
@@ -106,15 +107,14 @@ impl MainWindow {
                         ui.separator();
                     }
 
-                    if ui.button("🏷️ 標籤管理").clicked() {
+                    if ui.button(crate::lang::t(lang, "tag_manager")).clicked() {
                         app.show_tag_manager = true;
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text("大小"));
+                        ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text(crate::lang::t(lang, "size")));
                         ui.separator();
 
-                        // Theme toggle button
                         let theme_icon = if app.current_theme == "light" { "☽" } else { "☀" };
                         if ui.button(theme_icon).clicked() {
                             app.current_theme = if app.current_theme == "light" {
@@ -122,18 +122,16 @@ impl MainWindow {
                             } else {
                                 "light".to_string()
                             };
-                            // Apply theme immediately
                             if app.current_theme == "light" {
                                 ctx.set_visuals(egui::Visuals::light());
                             } else {
                                 ctx.set_visuals(egui::Visuals::dark());
                             }
-                            // Save preference
                             let db = app.db.lock().unwrap();
                             let _ = db.set_setting("theme", &app.current_theme);
                         }
 
-                        if ui.button("⚙️ 設定").clicked() {
+                        if ui.button(crate::lang::t(lang, "settings")).clicked() {
                             app.show_settings = true;
                         }
                     });
@@ -169,7 +167,7 @@ impl MainWindow {
                             }
                         });
                     ui.separator();
-                    if ui.button("+ 新增路徑").clicked() {
+                    if ui.button(crate::lang::t(lang, "add_path")).clicked() {
                         app.show_add_path = true;
                         app.reset_add_path_dialog();
                     }
@@ -218,20 +216,20 @@ impl MainWindow {
     // Remove path confirmation dialog
     if let Some((path_id, display_name)) = app.remove_path_confirm.take() {
         let mut keep_open = true;
-        egui::Window::new("確認移除路徑")
+        egui::Window::new(crate::lang::t(lang, "confirm_remove_path"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 ui.set_width(300.0);
                 ui.add_space(8.0);
-                ui.label(format!("確定要移除「{}」嗎？", display_name));
+                ui.label(format!("{}{}{}", crate::lang::t(lang, "confirm_remove_prefix"), display_name, crate::lang::t(lang, "confirm_remove_suffix")));
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new("（只會移除記錄，不會刪除檔案）").small().color(egui::Color32::GRAY));
+                ui.label(egui::RichText::new(crate::lang::t(lang, "remove_only_records")).small().color(egui::Color32::GRAY));
                 ui.add_space(16.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("確認移除").clicked() {
+                        if ui.button(crate::lang::t(lang, "confirm_remove")).clicked() {
                             let db = app.db.lock().unwrap();
                             let should_remove = db.remove_path(path_id).is_ok();
                             drop(db);
@@ -245,7 +243,7 @@ impl MainWindow {
                             }
                             keep_open = false;
                         }
-                        if ui.button("取消").clicked() {
+                        if ui.button(crate::lang::t(lang, "cancel")).clicked() {
                             keep_open = false;
                         }
                     });
@@ -264,7 +262,7 @@ impl MainWindow {
                         .and_then(|id| app.files.get(&id))
                         .map(|files| files.len())
                         .unwrap_or(0);
-                    ui.label(format!("共 {} 個檔案", file_count));
+                    ui.label(format!("{}{}{}", crate::lang::t(lang, "file_count_prefix"), file_count, crate::lang::t(lang, "file_count_suffix")));
                     if app.scanning {
                         ui.label(format!(" | {}", app.scan_status));
                     }
@@ -278,7 +276,7 @@ impl MainWindow {
 
         // Add Path Dialog
         if app.show_add_path {
-            egui::Window::new("新增監控路徑")
+            egui::Window::new(crate::lang::t(lang, "add_path_title"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -286,9 +284,9 @@ impl MainWindow {
                     ui.set_width(400.0);
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("資料夾路徑:");
+                        ui.label(crate::lang::t(lang, "folder_path"));
                         ui.text_edit_singleline(&mut app.add_path_path);
-                        if ui.button("選擇...").clicked() {
+                        if ui.button(crate::lang::t(lang, "browse")).clicked() {
                             if let Some(selected_path) = rfd::FileDialog::new().pick_folder() {
                                 app.add_path_path = selected_path.to_string_lossy().to_string();
                                 if app.add_path_display_name.is_empty() {
@@ -303,7 +301,7 @@ impl MainWindow {
 
                     ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("顯示名稱:");
+                        ui.label(crate::lang::t(lang, "display_name"));
                         ui.text_edit_singleline(&mut app.add_path_display_name);
                     });
 
@@ -314,11 +312,11 @@ impl MainWindow {
 
                     ui.add_space(16.0);
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button("取消").clicked() {
+                        if ui.button(crate::lang::t(lang, "cancel")).clicked() {
                             app.show_add_path = false;
                             app.reset_add_path_dialog();
                         }
-                        if ui.button("新增").clicked() {
+                        if ui.button(crate::lang::t(lang, "add")).clicked() {
                             app.add_path();
                         }
                     });
@@ -502,10 +500,11 @@ impl MainWindow {
     }
 
     fn clean_unused_thumbnails(app: &mut App) {
+        let lang = app.lang;
         let data_dir = crate::utils::get_data_dir();
         let thumbs_dir = data_dir.join("thumbs");
         if !thumbs_dir.exists() {
-            app.scan_status = "縮圖資料夾不存在".to_string();
+            app.scan_status = crate::lang::t(lang, "thumbs_dir_not_exist").to_string();
             return;
         }
 
@@ -527,7 +526,7 @@ impl MainWindow {
         let entries = match std::fs::read_dir(&thumbs_dir) {
             Ok(e) => e,
             Err(e) => {
-                app.scan_status = format!("無法讀取縮圖資料夾: {}", e);
+                app.scan_status = format!("{}{}", crate::lang::t(lang, "cannot_read_thumbs_dir_prefix"), e);
                 return;
             }
         };
@@ -545,7 +544,7 @@ impl MainWindow {
             }
         }
 
-        app.scan_status = format!("已刪除 {} 個未使用的縮圖，清理 {} 筆無效紀錄", deleted, orphan_mappings);
+        app.scan_status = format!("{}{}{}{}{}", crate::lang::t(lang, "cleaned_thumbs_prefix"), deleted, crate::lang::t(lang, "cleaned_thumbs_mid"), orphan_mappings, crate::lang::t(lang, "cleaned_thumbs_suffix"));
         info!("Cleaned {} unused thumbnails, {} orphan mappings", deleted, orphan_mappings);
     }
 
@@ -565,7 +564,7 @@ impl MainWindow {
 
         app.scanning = true;
         app.scan_progress = 0.0;
-        app.scan_status = "掃描中...".to_string();
+        app.scan_status = crate::lang::t(app.lang, "scanning").to_string();
         app.thumbnail_progress = None;
 
         let (tx, rx) = std::sync::mpsc::channel();

@@ -31,8 +31,9 @@ impl TagManager {
 
     pub fn show(&mut self, ctx: &egui::Context, app: &mut App) -> bool {
         let mut open = true;
+        let lang = app.lang;
 
-        egui::Window::new("標籤管理")
+        egui::Window::new(crate::lang::t(lang, "tag_manager_title"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -41,7 +42,7 @@ impl TagManager {
                 ui.set_width(400.0);
                 ui.set_min_height(300.0);
 
-                ui.collapsing("現有標籤", |ui| {
+                ui.collapsing(crate::lang::t(lang, "existing_tags"), |ui| {
                     let tags_snapshot: Vec<_> = app.tags.clone();
                     for tag in &tags_snapshot {
                         let color = crate::utils::hex_to_color(&tag.color);
@@ -57,11 +58,11 @@ impl TagManager {
 
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let tag_id = tag.id;
-                                if ui.button("刪除").clicked() {
+                                if ui.button(crate::lang::t(lang, "delete")).clicked() {
                                     app.db.lock().unwrap().delete_tag(tag_id).ok();
                                     app.tags.retain(|t| t.id != tag_id);
                                 }
-                                if ui.button("編輯").clicked() {
+                                if ui.button(crate::lang::t(lang, "edit")).clicked() {
                                     self.editing_tag_id = Some(tag_id);
                                     self.edit_name = tag.name.clone();
                                     self.edit_color = tag.color.clone();
@@ -75,37 +76,37 @@ impl TagManager {
 
                 if let Some(editing_id) = self.editing_tag_id {
                     ui.group(|ui| {
-                        ui.label("編輯標籤:");
+                        ui.label(crate::lang::t(lang, "edit_tag"));
                         ui.text_edit_singleline(&mut self.edit_name);
                         ui.horizontal(|ui| {
-                            ui.label("顏色:");
+                            ui.label(crate::lang::t(lang, "color"));
                             ui.text_edit_singleline(&mut self.edit_color);
                         });
 
                         self.show_color_presets(ui, true);
 
                         ui.horizontal(|ui| {
-                            if ui.button("取消").clicked() {
+                            if ui.button(crate::lang::t(lang, "cancel")).clicked() {
                                 self.editing_tag_id = None;
                             }
-                            if ui.button("儲存").clicked() {
+                            if ui.button(crate::lang::t(lang, "save")).clicked() {
                                 self.save_tag_edit(editing_id, app);
                             }
                         });
                     });
                 } else {
                     ui.group(|ui| {
-                        ui.label("新增標籤:");
+                        ui.label(crate::lang::t(lang, "new_tag"));
                         ui.text_edit_singleline(&mut self.new_tag_name);
 
                         ui.horizontal(|ui| {
-                            ui.label("顏色:");
+                            ui.label(crate::lang::t(lang, "color"));
                             ui.text_edit_singleline(&mut self.new_tag_color);
                         });
 
                         self.show_color_presets(ui, false);
 
-                        if ui.button("新增").clicked() {
+                        if ui.button(crate::lang::t(lang, "add")).clicked() {
                             self.add_new_tag(app);
                         }
 
@@ -149,7 +150,7 @@ impl TagManager {
     fn save_tag_edit(&mut self, tag_id: i64, app: &mut App) {
         let name = self.edit_name.trim();
         if name.is_empty() {
-            self.error = Some("標籤名稱不能為空".to_string());
+            self.error = Some(crate::lang::t(app.lang, "tag_name_empty").to_string());
             return;
         }
 
@@ -166,7 +167,7 @@ impl TagManager {
     fn add_new_tag(&mut self, app: &mut App) {
         let name = self.new_tag_name.trim();
         if name.is_empty() {
-            self.error = Some("標籤名稱不能為空".to_string());
+            self.error = Some(crate::lang::t(app.lang, "tag_name_empty").to_string());
             return;
         }
 
@@ -183,7 +184,7 @@ impl TagManager {
                 self.error = None;
             }
             Err(e) => {
-                self.error = Some(format!("建立標籤失敗: {}", e));
+                self.error = Some(format!("{}{}", crate::lang::t(app.lang, "create_tag_failed_prefix"), e));
             }
         }
     }

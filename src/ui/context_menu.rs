@@ -32,6 +32,7 @@ impl ContextMenu {
         let file_for_location = file.clone();
         let file_for_remove = file.clone();
         let file_for_capture = file.clone();
+        let lang = app.lang;
 
         let area_response = egui::Area::new(egui::Id::new("context_menu"))
             .fixed_pos(self.click_pos)
@@ -40,14 +41,14 @@ impl ContextMenu {
                     .show(ui, |ui| {
                         ui.set_min_width(200.0);
 
-                        if ui.button("▶ 播放").clicked() {
+                        if ui.button(crate::lang::t(lang, "play")).clicked() {
                             self.play_file_internal(&file_path, app);
                             self.file = None;
                         }
 
                         ui.separator();
 
-                        ui.label("評分:");
+                        ui.label(crate::lang::t(lang, "rating_label"));
                         let current_rating = file.rating;
                         ui.horizontal(|ui| {
                             for i in 1..=5 {
@@ -61,7 +62,7 @@ impl ContextMenu {
 
                         ui.separator();
 
-                        ui.label("標籤:");
+                        ui.label(crate::lang::t(lang, "tags_label"));
                         let file_tags = app.db.lock().unwrap()
                             .get_tags_for_file(file_id)
                             .unwrap_or_default();
@@ -76,7 +77,6 @@ impl ContextMenu {
                                     app.db.lock().unwrap()
                                         .remove_tag_from_file(file_id_copy, tag_id)
                                         .ok();
-                                    // Update cached tag map
                                     app.file_tag_map.entry(file_id_copy)
                                         .and_modify(|tags| tags.retain(|&t| t != tag_id));
                                     app.invalidate_cache();
@@ -84,7 +84,6 @@ impl ContextMenu {
                             });
                         }
 
-                        // ComboBox to select existing tags
                         let available_tags: Vec<_> = app.tags.iter()
                             .filter(|t| !file_tags.iter().any(|ft| ft.id == t.id))
                             .map(|t| (t.id, t.name.clone(), t.color.clone()))
@@ -92,17 +91,16 @@ impl ContextMenu {
 
                         if !available_tags.is_empty() {
                             ui.horizontal(|ui| {
-                                ui.label("新增:");
+                                ui.label(crate::lang::t(lang, "add_tag"));
                                 egui::ComboBox::from_id_salt("add_tag_combo")
                                     .width(120.0)
-                                    .selected_text("選擇標籤")
+                                    .selected_text(crate::lang::t(lang, "select_tag"))
                                     .show_ui(ui, |ui| {
                                         for (tag_id, tag_name, tag_color) in available_tags {
                                             if ui.selectable_label(false, egui::RichText::new(&tag_name).color(crate::utils::hex_to_color(&tag_color))).clicked() {
                                                 app.db.lock().unwrap()
                                                     .add_tag_to_file(file_id, tag_id)
                                                     .ok();
-                                                // Update cached tag map
                                                 app.file_tag_map.entry(file_id)
                                                     .or_default()
                                                     .push(tag_id);
@@ -113,31 +111,29 @@ impl ContextMenu {
                             });
                         }
 
-                        if ui.button("🏷️ 管理標籤...").clicked() {
+                        if ui.button(crate::lang::t(lang, "manage_tags")).clicked() {
                             app.show_tag_manager = true;
                             self.file = None;
                         }
 
                         ui.separator();
 
-                        if ui.button("📷 截圖...").clicked() {
+                        if ui.button(crate::lang::t(lang, "screenshot")).clicked() {
                             app.screenshot_dialog = Some(crate::ui::ScreenshotDialog::new(file_for_capture));
-                            self.file = None; // Close context menu
+                            self.file = None;
                         }
 
                         ui.separator();
 
-                        // Move to tab submenu
                         let other_tabs: Vec<(i64, String, String)> = app.watched_paths.iter()
                             .filter(|p| p.id != file.path_id)
                             .map(|p| (p.id, p.path.clone(), p.display_name.clone()))
                             .collect();
 
                         if !other_tabs.is_empty() {
-                            ui.collapsing("➡️ 移到其他標籤頁", |ui| {
+                            ui.collapsing(crate::lang::t(lang, "move_to_tab"), |ui| {
                                 for (dest_id, dest_path, dest_name) in &other_tabs {
                                     if ui.button(dest_name).clicked() {
-                                        // Compute new file path in destination directory
                                         let new_path = std::path::PathBuf::from(dest_path)
                                             .join(&file.file_name);
                                         let new_path_str = new_path.to_string_lossy().to_string();
@@ -146,18 +142,18 @@ impl ContextMenu {
                                 }
                             });
                         } else {
-                            ui.label("沒有其他標籤頁");
+                            ui.label(crate::lang::t(lang, "no_other_tabs"));
                         }
 
                         ui.separator();
 
-                        if ui.button("📂 開啟所在資料夾").clicked() {
+                        if ui.button(crate::lang::t(lang, "open_folder")).clicked() {
                             self.open_file_location_internal(&file_for_location);
                             self.file = None;
                         }
 
                         let clipboard_path = file.file_path.clone();
-                        if ui.button("📋 複製路徑").clicked() {
+                        if ui.button(crate::lang::t(lang, "copy_path")).clicked() {
                             ctx.copy_text(clipboard_path);
                             self.file = None;
                         }
@@ -165,12 +161,12 @@ impl ContextMenu {
                         ui.separator();
 
                         if file.has_custom_thumb {
-                            if ui.button("🔄 恢復預設縮圖").clicked() {
+                            if ui.button(crate::lang::t(lang, "reset_thumb")).clicked() {
                                 self.reset_thumbnail_internal(&file, app);
                             }
                         }
 
-                        if ui.button("❌ 移除記錄").clicked() {
+                        if ui.button(crate::lang::t(lang, "remove_record")).clicked() {
                             self.remove_file_internal(file_for_remove, app);
                         }
                     });
