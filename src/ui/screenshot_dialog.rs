@@ -241,9 +241,9 @@ impl ScreenshotDialog {
 
         let data_dir = crate::utils::get_data_dir();
 
-        let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path);
+        let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path, app.db.clone());
 
-        if let Ok(thumb_path) = gen.generate_thumbnail_at_time(&self.file.file_path, self.current_time) {
+        if let Ok(thumb_path) = gen.generate_thumbnail_at_time(&self.file.file_path, self.current_time, Some(self.file.id)) {
             // Update database
             if let Err(e) = app.db.blocking_lock()
                 .update_thumbnail(self.file.id, &thumb_path) {
