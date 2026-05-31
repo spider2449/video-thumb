@@ -73,8 +73,8 @@ impl ScreenshotDialog {
             .collapsible(false)
             .resizable(true)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .default_size([480.0, 380.0])
-            .min_size([400.0, 320.0])
+            .default_size([480.0, 360.0])
+            .min_size([400.0, 300.0])
             .show(ctx, |ui| {
                 if let Some(rx) = self.duration_rx.as_ref() {
                     if let Ok(duration) = rx.try_recv() {
@@ -112,22 +112,19 @@ impl ScreenshotDialog {
                 }
 
                 let available_w = ui.available_width();
-                let available_h = ui.available_height();
                 let aspect = self.thumbnail_size[1] as f32 / self.thumbnail_size[0] as f32;
-                let reserved_h = 100.0;
-                let max_preview_h = (available_h - reserved_h).max(80.0);
+                let max_preview_h = 250.0;
                 let ideal_preview_h = available_w * aspect;
                 let preview_h = ideal_preview_h.min(max_preview_h);
-                let preview_w = preview_h / aspect;
 
                 let frame = egui::Frame::new()
                     .fill(ui.visuals().extreme_bg_color)
                     .corner_radius(4.0);
                 frame.show(ui, |ui| {
-                    ui.set_min_size(egui::vec2(preview_w.min(available_w), preview_h));
+                    ui.set_min_size(egui::vec2(available_w, preview_h));
 
                     if let Some(texture) = &self.preview_texture {
-                        let img_size = egui::Vec2::new(preview_w.min(available_w), preview_h);
+                        let img_size = egui::Vec2::new(available_w, preview_h);
                         ui.centered_and_justified(|ui| {
                             ui.add(
                                 egui::Image::new(texture)
