@@ -75,6 +75,8 @@ impl ScreenshotDialog {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .default_size([480.0, 360.0])
             .min_size([400.0, 300.0])
+            .max_height(500.0)
+            .vscroll(true)
             .show(ctx, |ui| {
                 if let Some(rx) = self.duration_rx.as_ref() {
                     if let Ok(duration) = rx.try_recv() {
