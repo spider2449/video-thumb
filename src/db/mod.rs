@@ -105,30 +105,30 @@ impl Database {
 
     fn migrate_thumbnails(&self) -> SqliteResult<()> {
         let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM thumbnail_map",
+            "SELECT COUNT(*) FROM files WHERE thumbnail_path IS NOT NULL",
             [],
             |row| row.get(0),
         )?;
 
-        if count > 0 {
+        if count == 0 {
             return Ok(());
         }
 
         let mut stmt = self.conn.prepare(
-            "SELECT id, file_path, thumbnail_path FROM files WHERE thumbnail_path IS NOT NULL"
+            "SELECT id, thumbnail_path FROM files WHERE thumbnail_path IS NOT NULL"
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
             ))
         })?;
 
         let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
+        std::fs::create_dir_all(&thumbs_dir).ok();
 
         for row in rows {
-            let (file_id, _file_path, thumb_path) = row?;
+            let (file_id, thumb_path) = row?;
             let old_path = std::path::PathBuf::from(&thumb_path);
 
             if old_path.exists() {
@@ -141,16 +141,15 @@ impl Database {
                         "INSERT INTO thumbnail_map (file_id, thumb_filename) VALUES (?1, ?2)",
                         params![file_id, new_filename],
                     )?;
+                    self.conn.execute(
+                        "UPDATE files SET thumbnail_path = NULL WHERE id = ?1",
+                        [file_id],
+                    )?;
                     info!("Migrated thumbnail for file_id={}: {} -> {}", file_id, thumb_path, new_filename);
                 } else {
                     log::warn!("Failed to rename thumbnail for file_id={}", file_id);
                 }
             }
-
-            self.conn.execute(
-                "UPDATE files SET thumbnail_path = NULL WHERE id = ?1",
-                [file_id],
-            )?;
         }
 
         Ok(())
