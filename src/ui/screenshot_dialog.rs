@@ -1,7 +1,7 @@
 use crate::app::App;
 use crate::db::FileEntry;
 use eframe::egui;
-use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 const DEBOUNCE_MS: u128 = 100;
@@ -251,12 +251,14 @@ impl ScreenshotDialog {
             } else {
                 // Update in-memory cache
                 for files in app.files.values_mut() {
-                    for f in files.iter_mut() {
+                    let mut vec = (**files).clone();
+                    for f in vec.iter_mut() {
                         if f.id == self.file.id {
                             f.thumbnail_path = Some(thumb_path.clone());
                             f.has_custom_thumb = true;
                         }
                     }
+                    *files = Arc::new(vec);
                 }
                 log::info!("Screenshot saved: {}", thumb_path);
             }

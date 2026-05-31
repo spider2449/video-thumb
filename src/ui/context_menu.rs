@@ -2,6 +2,7 @@ use crate::app::App;
 use crate::db::FileEntry;
 use eframe::egui;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub struct ContextMenu {
     pub file: Option<FileEntry>,
@@ -212,9 +213,11 @@ impl ContextMenu {
             .ok();
         app.files.values_mut()
             .for_each(|files| {
-                if let Some(f) = files.iter_mut().find(|f| f.id == file_id) {
+                let mut vec = (**files).clone();
+                if let Some(f) = vec.iter_mut().find(|f| f.id == file_id) {
                     f.rating = rating;
                 }
+                *files = Arc::new(vec);
             });
         if let Some(f) = self.file.as_mut() {
             if f.id == file_id {
@@ -313,7 +316,9 @@ impl ContextMenu {
 
         app.files.values_mut()
             .for_each(|files| {
-                files.retain(|f| f.id != file.id);
+                let mut vec = (**files).clone();
+                vec.retain(|f| f.id != file.id);
+                *files = Arc::new(vec);
             });
 
         // Clean up tag map

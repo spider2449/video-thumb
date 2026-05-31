@@ -143,22 +143,23 @@ impl MainWindow {
                     egui::ScrollArea::vertical()
                         .drag_to_scroll(false)
                         .show(ui, |ui| {
-                            let paths_snapshot: Vec<_> = app.watched_paths.clone();
-                            for path in &paths_snapshot {
-                                let selected = app.current_path_id == Some(path.id);
-                                let button = egui::Button::new(&path.display_name).selected(selected);
+                            let tabs: Vec<(i64, String, bool)> = app.watched_paths.iter().map(|p| {
+                                (p.id, p.display_name.clone(), app.current_path_id == Some(p.id))
+                            }).collect();
+                            for &(ref path_id, ref display_name, selected) in &tabs {
+                                let button = egui::Button::new(display_name.as_str()).selected(selected);
 
                                 if ui.add(button).clicked() {
-                                    app.current_path_id = Some(path.id);
+                                    app.current_path_id = Some(*path_id);
                                     app.selected_file_id = None;
-                                    if !app.files.contains_key(&path.id) {
-                                        app.load_files_for_path(path.id);
+                                    if !app.files.contains_key(path_id) {
+                                        app.load_files_for_path(*path_id);
                                     }
                                 }
 
                                 if selected {
                                     if ui.button("×").clicked() {
-                                        app.remove_path_confirm = Some((path.id, path.display_name.clone()));
+                                        app.remove_path_confirm = Some((*path_id, display_name.clone()));
                                     }
                                 }
                             }
@@ -175,12 +176,17 @@ impl MainWindow {
         egui::CentralPanel::default()
             .show(ctx, |ui| {
                 let files = app.get_current_files();
+                let scroll_target = app.scroll_to_idx.take();
 
                 egui::ScrollArea::vertical()
+                    .id_salt(egui::Id::new("file_scroll_area"))
                     .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    for file in files {
-                        Self::show_thumbnail_item(ui, &file, app.thumbnail_size, ctx, app);
+                    for (idx, file) in files.iter().enumerate() {
+                        if scroll_target == Some(idx) {
+                            ui.scroll_to_cursor(Some(egui::Align::TOP));
+                        }
+                        Self::show_thumbnail_item(ui, file, app.thumbnail_size, ctx, app);
                     }
             });
         });
@@ -250,8 +256,11 @@ impl MainWindow {
         egui::TopBottomPanel::bottom("status_bar")
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    let files = app.get_current_files();
-                    ui.label(format!("共 {} 個檔案", files.len()));
+                    let file_count = app.current_path_id
+                        .and_then(|id| app.files.get(&id))
+                        .map(|files| files.len())
+                        .unwrap_or(0);
+                    ui.label(format!("共 {} 個檔案", file_count));
                     if app.scanning {
                         ui.label(format!(" | {}", app.scan_status));
                     }

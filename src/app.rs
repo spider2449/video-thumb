@@ -8,7 +8,8 @@ use tokio::sync::Mutex;
 pub struct App {
     pub db: Arc<Mutex<Database>>,
     pub watched_paths: Vec<WatchedPath>,
-    pub files: HashMap<i64, Vec<FileEntry>>,
+    pub files: HashMap<i64, Arc<Vec<FileEntry>>>,
+    pub filter_cache: Option<(i64, SortBy, String, Option<i32>, Option<i64>, Arc<Vec<FileEntry>>)>,
     pub file_tag_map: HashMap<i64, Vec<i64>>, // file_id -> tag_ids
     pub tags: Vec<crate::db::Tag>,
     pub current_path_id: Option<i64>,
@@ -46,6 +47,8 @@ pub struct App {
     pub cache_invalidated: bool,
     // Theme storage
     pub current_theme: String,
+    // Scroll target for keyboard navigation
+    pub scroll_to_idx: Option<usize>,
 }
 
 pub struct ScanResult {
@@ -116,6 +119,8 @@ impl App {
             thumbnail_progress: None,
             thumb_progress_rx: None,
             thumb_done_rx: None,
+            filter_cache: None,
+            scroll_to_idx: None,
         };
 
         if app.watched_paths.is_empty() {
@@ -136,7 +141,7 @@ impl App {
                 log::info!("Loaded {} files for path_id={}", files.len(), path_id);
                 // Clear stale tag map entries for this path's previous files
                 if let Some(old_files) = self.files.get(&path_id) {
-                    for file in old_files {
+                    for file in old_files.iter() {
                         self.file_tag_map.remove(&file.id);
                     }
                 }
@@ -149,35 +154,53 @@ impl App {
                         log::warn!("Failed to load file tags: {:?}", e);
                     }
                 }
-                self.files.insert(path_id, files);
+                self.files.insert(path_id, Arc::new(files));
             }
             Err(e) => {
                 log::error!("Failed to load files for path_id={}: {:?}", path_id, e);
             }
         }
+        self.filter_cache = None;
         self.loading_files = false;
     }
 
-    pub fn get_current_files(&self) -> Vec<FileEntry> {
+    pub fn get_current_files(&mut self) -> Arc<Vec<FileEntry>> {
         let path_id = match self.current_path_id {
             Some(id) => id,
             None => {
                 if let Some(first) = self.watched_paths.first() {
                     first.id
                 } else {
-                    return vec![];
+                    return Arc::new(vec![]);
                 }
             }
         };
 
-        // Get files from cache or DB
-        let mut files = if let Some(cached) = self.files.get(&path_id) {
-            cached.clone()
+        // Check filter cache
+        if let Some(ref cache) = self.filter_cache {
+            if cache.0 == path_id
+                && cache.1 == self.sort_by
+                && cache.2 == self.search_query
+                && cache.3 == self.rating_filter
+                && cache.4 == self.tag_filter
+            {
+                return Arc::clone(&cache.5);
+            }
+        }
+
+        // Get base files from cache or DB
+        let base_files = if let Some(cached) = self.files.get(&path_id) {
+            Arc::clone(cached)
         } else {
-            // Fall back to DB on cache miss
             let db_guard = self.db.blocking_lock();
-            db_guard.get_files_for_path(path_id).unwrap_or_default()
+            let files = db_guard.get_files_for_path(path_id).unwrap_or_default();
+            let files = Arc::new(files);
+            self.files.insert(path_id, Arc::clone(&files));
+            files
         };
+
+        // Clone for mutation (filtering + sorting)
+        let mut files: Vec<FileEntry> = (*base_files).clone();
 
         // Apply filters in-memory
         if !self.search_query.is_empty() {
@@ -203,7 +226,9 @@ impl App {
             SortBy::Rating => files.sort_by(|a, b| b.rating.cmp(&a.rating)),
         }
 
-        files
+        let result = Arc::new(files);
+        self.filter_cache = Some((path_id, self.sort_by, self.search_query.clone(), self.rating_filter, self.tag_filter, Arc::clone(&result)));
+        result
     }
 
     pub fn invalidate_cache(&mut self) {
@@ -446,6 +471,14 @@ impl App {
                     Some((selected_idx + items_per_row).min(current_files.len().saturating_sub(1)))
                 } else if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                     Some(selected_idx.saturating_sub(items_per_row))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::PageDown)) {
+                    Some((selected_idx + items_per_row).min(current_files.len().saturating_sub(1)))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::PageUp)) {
+                    Some(selected_idx.saturating_sub(items_per_row))
+                } else if ctx.input(|i| i.key_pressed(egui::Key::Home)) {
+                    Some(0)
+                } else if ctx.input(|i| i.key_pressed(egui::Key::End)) {
+                    Some(current_files.len().saturating_sub(1))
                 } else if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
                     if let Some(file) = current_files.get(selected_idx) {
                         self.play_video_file(&file.file_path);
@@ -457,6 +490,7 @@ impl App {
 
                 if let Some(idx) = new_idx {
                     self.selected_file_id = Some(current_files[idx].id);
+                    self.scroll_to_idx = Some(idx);
                     ctx.request_repaint();
                 }
             } else {
