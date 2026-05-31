@@ -73,8 +73,8 @@ impl ScreenshotDialog {
             .collapsible(false)
             .resizable(true)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .default_size([600.0, 500.0])
-            .min_size([500.0, 450.0])
+            .default_size([480.0, 380.0])
+            .min_size([400.0, 320.0])
             .show(ctx, |ui| {
                 if let Some(rx) = self.duration_rx.as_ref() {
                     if let Ok(duration) = rx.try_recv() {
@@ -85,25 +85,54 @@ impl ScreenshotDialog {
                     }
                 }
 
-                let _available_width = ui.available_width();
+                if let Some(rx) = self.preview_rx.as_ref() {
+                    if let Ok(result) = rx.try_recv() {
+                        self.is_loading = false;
+                        self.preview_rx = None;
+                        match result {
+                            Ok((rgba, tex_name)) => {
+                                let colors: Vec<egui::Color32> = rgba.pixels()
+                                    .map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+                                    .collect();
+                                let color_img = egui::ColorImage {
+                                    size: [rgba.width() as usize, rgba.height() as usize],
+                                    pixels: colors,
+                                };
+                                self.preview_texture = Some(ctx.load_texture(
+                                    tex_name,
+                                    color_img,
+                                    egui::TextureOptions::LINEAR,
+                                ));
+                            }
+                            Err(e) => {
+                                log::warn!("Preview generation failed: {}", e);
+                            }
+                        }
+                    }
+                }
 
-                ui.group(|ui| {
-                    ui.set_min_height(200.0);
+                let available_w = ui.available_width();
+                let aspect = self.thumbnail_size[1] as f32 / self.thumbnail_size[0] as f32;
+                let preview_h = available_w * aspect;
+
+                let frame = egui::Frame::new()
+                    .fill(ui.visuals().extreme_bg_color)
+                    .corner_radius(4.0);
+                frame.show(ui, |ui| {
+                    ui.set_min_size(egui::vec2(available_w, preview_h));
 
                     if let Some(texture) = &self.preview_texture {
-                        let size = egui::Vec2::new(
-                            self.thumbnail_size[0] as f32,
-                            self.thumbnail_size[1] as f32,
-                        );
-                        let available_rect = ui.available_rect_before_wrap();
-                        let img_pos = available_rect.center() - (size / 2.0);
-                        ui.put(
-                            egui::Rect::from_min_size(img_pos, size),
-                            egui::Image::new(texture).fit_to_exact_size(size),
-                        );
+                        let img_size = egui::Vec2::new(available_w, preview_h);
+                        ui.centered_and_justified(|ui| {
+                            ui.add(
+                                egui::Image::new(texture)
+                                    .fit_to_exact_size(img_size)
+                                    .maintain_aspect_ratio(true),
+                            );
+                        });
                     } else if self.is_loading {
                         ui.centered_and_justified(|ui| {
-                            ui.label(crate::lang::t(lang, "loading"));
+                            ui.spinner();
                         });
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -112,14 +141,12 @@ impl ScreenshotDialog {
                     }
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(4.0);
 
                 let prev_time = self.current_time;
-                ui.label(format!("{}{:?}", crate::lang::t(lang, "time_prefix"), self.current_time));
                 ui.add(
                     egui::Slider::new(&mut self.current_time, 0.0..=self.total_duration)
-                        .show_value(true)
-                        .text(crate::lang::t(lang, "timeline")),
+                        .show_value(false),
                 );
 
                 let total_mins = (self.total_duration / 60.0) as u32;
@@ -127,51 +154,25 @@ impl ScreenshotDialog {
                 let mins = (self.current_time / 60.0) as u32;
                 let secs = (self.current_time % 60.0) as u32;
                 ui.horizontal(|ui| {
-                    ui.label(format!("{}{:02}:{:02}", crate::lang::t(lang, "current_prefix"), mins, secs));
+                    ui.label(format!("{:02}:{:02}", mins, secs));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("{}{:02}:{:02}", crate::lang::t(lang, "total_prefix"), total_mins, total_secs));
+                        ui.label(format!("{:02}:{:02}", total_mins, total_secs));
                     });
                 });
 
-        if let Some(rx) = self.preview_rx.as_ref() {
-            if let Ok(result) = rx.try_recv() {
-                self.is_loading = false;
-                self.preview_rx = None;
-                match result {
-                    Ok((rgba, tex_name)) => {
-                        let colors: Vec<egui::Color32> = rgba.pixels()
-                            .map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
-                            .collect();
-                        let color_img = egui::ColorImage {
-                            size: [rgba.width() as usize, rgba.height() as usize],
-                            pixels: colors,
-                        };
-                        self.preview_texture = Some(ctx.load_texture(
-                            tex_name,
-                            color_img,
-                            egui::TextureOptions::LINEAR,
-                        ));
-                    }
-                    Err(e) => {
-                        log::warn!("Preview generation failed: {}", e);
-                    }
+                let time_changed_significantly = (self.current_time - prev_time).abs() > 0.001;
+                if time_changed_significantly {
+                    self.last_update_time = Instant::now();
                 }
-            }
-        }
 
-        let time_changed_significantly = (self.current_time - prev_time).abs() > 0.001;
-        if time_changed_significantly {
-            self.last_update_time = Instant::now();
-        }
+                let elapsed = self.last_update_time.elapsed().as_millis();
+                let preview_pending = (self.current_time - self.last_preview_time).abs() > 0.001;
+                if elapsed >= DEBOUNCE_MS && !self.is_loading && preview_pending && self.preview_rx.is_none() {
+                    self.update_preview();
+                    self.last_preview_time = self.current_time;
+                }
 
-        let elapsed = self.last_update_time.elapsed().as_millis();
-        let preview_pending = (self.current_time - self.last_preview_time).abs() > 0.001;
-        if elapsed >= DEBOUNCE_MS && !self.is_loading && preview_pending && self.preview_rx.is_none() {
-            self.update_preview();
-            self.last_preview_time = self.current_time;
-        }
-
-                ui.add_space(16.0);
+                ui.add_space(8.0);
 
                 ui.horizontal(|ui| {
                     if ui.button(crate::lang::t(lang, "cancel")).clicked() {
