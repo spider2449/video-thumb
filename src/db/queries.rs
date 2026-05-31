@@ -88,20 +88,27 @@ impl Database {
     }
 
     pub fn get_files_for_path(&self, path_id: i64) -> SqliteResult<Vec<FileEntry>> {
+        let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
         let mut stmt = self.conn.prepare(
-            "SELECT id, path_id, file_path, file_name, file_ext, thumbnail_path,
-                    file_size, modified_at, rating, has_custom_thumb, created_at
-             FROM files WHERE path_id = ?1",
+            "SELECT f.id, f.path_id, f.file_path, f.file_name, f.file_ext,
+                    tm.thumb_filename,
+                    f.file_size, f.modified_at, f.rating, f.has_custom_thumb, f.created_at
+             FROM files f
+             LEFT JOIN thumbnail_map tm ON tm.file_id = f.id
+             WHERE f.path_id = ?1",
         )?;
         let files = stmt
             .query_map([path_id], |row| {
+                let thumb_filename: Option<String> = row.get(5)?;
+                let thumbnail_path = thumb_filename
+                    .map(|f| thumbs_dir.join(f).to_string_lossy().to_string());
                 Ok(FileEntry {
                     id: row.get(0)?,
                     path_id: row.get(1)?,
                     file_path: row.get(2)?,
                     file_name: row.get(3)?,
                     file_ext: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                    thumbnail_path: row.get(5)?,
+                    thumbnail_path,
                     file_size: row.get(6)?,
                     modified_at: row.get(7)?,
                     rating: row.get(8)?,
@@ -114,19 +121,26 @@ impl Database {
     }
 
     pub fn get_file_by_id(&self, file_id: i64) -> SqliteResult<Option<FileEntry>> {
+        let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
         let mut stmt = self.conn.prepare(
-            "SELECT id, path_id, file_path, file_name, file_ext, thumbnail_path,
-                    file_size, modified_at, rating, has_custom_thumb, created_at
-             FROM files WHERE id = ?1",
+            "SELECT f.id, f.path_id, f.file_path, f.file_name, f.file_ext,
+                    tm.thumb_filename,
+                    f.file_size, f.modified_at, f.rating, f.has_custom_thumb, f.created_at
+             FROM files f
+             LEFT JOIN thumbnail_map tm ON tm.file_id = f.id
+             WHERE f.id = ?1",
         )?;
         let result = stmt.query_row([file_id], |row| {
+            let thumb_filename: Option<String> = row.get(5)?;
+            let thumbnail_path = thumb_filename
+                .map(|f| thumbs_dir.join(f).to_string_lossy().to_string());
             Ok(FileEntry {
                 id: row.get(0)?,
                 path_id: row.get(1)?,
                 file_path: row.get(2)?,
                 file_name: row.get(3)?,
                 file_ext: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                thumbnail_path: row.get(5)?,
+                thumbnail_path,
                 file_size: row.get(6)?,
                 modified_at: row.get(7)?,
                 rating: row.get(8)?,

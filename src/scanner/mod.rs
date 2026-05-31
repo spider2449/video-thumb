@@ -41,45 +41,56 @@ impl Scanner {
         .await
         .map_err(|e| format!("task join error: {e}"))?;
 
-        // Insert files into database (hold lock for entire batch)
+        // Insert files into database first (so we have file_ids for thumbnail lookup)
         let mut count = 0;
         let mut files_needing_thumbnails = Vec::new();
+
+        let db_files;
+        {
+            let db = self.db.lock().await;
+            for file_entry in &files {
+                if let Err(e) = db.upsert_file(&file_entry) {
+                    error!("Failed to insert file: {:?}", e);
+                } else {
+                    count += 1;
+                }
+            }
+
+            // Delete records for files that no longer exist on disk
+            let found_paths: HashSet<String> = files.iter()
+                .map(|f| f.file_path.clone())
+                .collect();
+            if let Ok(existing_files) = db.get_files_for_path(path_id) {
+                let mut deleted = 0;
+                for existing in &existing_files {
+                    if !found_paths.contains(&existing.file_path) {
+                        if let Err(e) = db.delete_file(existing.id) {
+                            error!("Failed to delete stale record for {}: {:?}", existing.file_path, e);
+                        } else {
+                            deleted += 1;
+                        }
+                    }
+                }
+                if deleted > 0 {
+                    info!("Deleted {} stale records for files no longer on disk", deleted);
+                }
+            }
+
+            db_files = db.get_files_for_path(path_id).unwrap_or_default();
+        }
+
+        // Now check thumbnail existence using file_ids from DB (lock released)
         let data_dir = crate::utils::get_data_dir();
         let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &PathBuf::from(""), self.db.clone());
 
+        let path_to_id: std::collections::HashMap<String, i64> = db_files.iter()
+            .map(|f| (f.file_path.clone(), f.id))
+            .collect();
         for file_entry in &files {
-            let thumb_path = gen.get_thumbnail_path(&file_entry.file_path, None);
+            let file_id = path_to_id.get(&file_entry.file_path).copied();
+            let thumb_path = gen.get_thumbnail_path(&file_entry.file_path, file_id);
             if !thumb_path.exists() {
                 files_needing_thumbnails.push(file_entry.file_path.clone());
-            }
-        }
-
-        let db = self.db.lock().await;
-        for file_entry in &files {
-            if let Err(e) = db.upsert_file(&file_entry) {
-                error!("Failed to insert file: {:?}", e);
-            } else {
-                count += 1;
-            }
-        }
-
-        // Delete records for files that no longer exist on disk
-        let found_paths: HashSet<String> = files.iter()
-            .map(|f| f.file_path.clone())
-            .collect();
-        if let Ok(existing_files) = db.get_files_for_path(path_id) {
-            let mut deleted = 0;
-            for existing in &existing_files {
-                if !found_paths.contains(&existing.file_path) {
-                    if let Err(e) = db.delete_file(existing.id) {
-                        error!("Failed to delete stale record for {}: {:?}", existing.file_path, e);
-                    } else {
-                        deleted += 1;
-                    }
-                }
-            }
-            if deleted > 0 {
-                info!("Deleted {} stale records for files no longer on disk", deleted);
             }
         }
 
