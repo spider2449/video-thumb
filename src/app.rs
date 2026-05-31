@@ -47,6 +47,7 @@ pub struct App {
     pub cache_invalidated: bool,
     // Theme storage
     pub current_theme: String,
+    pub theme_loaded: bool,
     // Scroll target for keyboard navigation
     pub scroll_to_idx: Option<usize>,
     // Language
@@ -121,6 +122,7 @@ impl App {
             console_visible: true,
             cache_invalidated: false,
             current_theme: "dark".to_string(),
+            theme_loaded: false,
             thumbnail_progress: None,
             thumb_progress_rx: None,
             thumb_done_rx: None,
@@ -394,7 +396,7 @@ impl App {
         }
 
         // Load and apply theme on first frame
-        if self.current_theme == "dark" {
+        if !self.theme_loaded {
             let db_guard = self.db.lock().unwrap();
             self.current_theme = db_guard.get_setting("theme")
                 .ok()
@@ -402,6 +404,7 @@ impl App {
                 .unwrap_or_else(|| "dark".to_string());
             drop(db_guard);
             self.apply_theme(ctx);
+            self.theme_loaded = true;
         }
 
         // Toggle console with F12

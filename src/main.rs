@@ -95,33 +95,32 @@ fn setup_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
     // Try to load Noto Sans TC font
-    match std::fs::read("assets/NotoSansTC-Regular.otf") {
-        Ok(font_data) => {
-            info!("Font file loaded: {} bytes", font_data.len());
-            fonts.font_data.insert(
-                "NotoSansTC".to_string(),
-                egui::FontData::from_owned(font_data).into(),
-            );
-            fonts
-                .families
-                .entry(egui::FontFamily::Proportional)
-                .or_default()
-                .insert(0, "NotoSansTC".to_string());
-            info!("Font registered as NotoSansTC");
-        }
-        Err(e) => {
-            warn!("Failed to load font from file: {}", e);
-            // Try include_bytes as fallback
-            fonts.font_data.insert(
-                "NotoSansTC".to_string(),
-                egui::FontData::from_owned(include_bytes!("../assets/NotoSansTC-Regular.otf").to_vec()).into(),
-            );
-            fonts
-                .families
-                .entry(egui::FontFamily::Proportional)
-                .or_default()
-                .insert(0, "NotoSansTC".to_string());
-        }
+    let font_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("assets/NotoSansTC-Regular.otf")));
+    if let Some(font_data) = font_path.as_ref().and_then(|p| std::fs::read(p).ok()) {
+        info!("Font file loaded: {} bytes", font_data.len());
+        fonts.font_data.insert(
+            "NotoSansTC".to_string(),
+            egui::FontData::from_owned(font_data).into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "NotoSansTC".to_string());
+        info!("Font registered as NotoSansTC");
+    } else {
+        warn!("Failed to load font from file, using embedded fallback");
+        fonts.font_data.insert(
+            "NotoSansTC".to_string(),
+            egui::FontData::from_owned(include_bytes!("../assets/NotoSansTC-Regular.otf").to_vec()).into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "NotoSansTC".to_string());
     }
 
     ctx.set_fonts(fonts);

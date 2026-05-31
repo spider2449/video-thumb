@@ -276,9 +276,21 @@ impl ContextMenu {
             generator.delete_thumbnail(&file.file_path, Some(file.id));
 
             if let Ok(thumb_path) = generator.generate_thumbnail(&file.file_path, Some(file.id)) {
-                app.db.lock().unwrap()
+                if app.db.lock().unwrap()
                     .update_thumbnail(file.id, &thumb_path)
-                    .ok();
+                    .is_ok() {
+                    for files in app.files.values_mut() {
+                        let mut vec = (**files).clone();
+                        for f in vec.iter_mut() {
+                            if f.id == file.id {
+                                f.thumbnail_path = Some(thumb_path.clone());
+                                f.has_custom_thumb = true;
+                            }
+                        }
+                        *files = Arc::new(vec);
+                    }
+                    app.invalidate_cache();
+                }
             }
         }
     }

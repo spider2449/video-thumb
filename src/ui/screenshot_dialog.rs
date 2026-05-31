@@ -237,12 +237,11 @@ impl ScreenshotDialog {
         let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path, app.db.clone());
 
         if let Ok(thumb_path) = gen.generate_thumbnail_at_time(&self.file.file_path, self.current_time, Some(self.file.id)) {
-            // Update database
-            if let Err(e) = app.db.lock().unwrap()
-                .update_thumbnail(self.file.id, &thumb_path) {
+            let db_result = app.db.lock().unwrap()
+                .update_thumbnail(self.file.id, &thumb_path);
+            if let Err(e) = db_result {
                 log::error!("Failed to update thumbnail in database: {}", e);
             } else {
-                // Update in-memory cache
                 for files in app.files.values_mut() {
                     let mut vec = (**files).clone();
                     for f in vec.iter_mut() {
@@ -253,6 +252,7 @@ impl ScreenshotDialog {
                     }
                     *files = Arc::new(vec);
                 }
+                app.invalidate_cache();
                 log::info!("Screenshot saved: {}", thumb_path);
             }
         }
