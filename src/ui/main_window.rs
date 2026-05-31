@@ -510,11 +510,17 @@ impl MainWindow {
         }
 
         let db = app.db.lock().unwrap();
-        let referenced: std::collections::HashSet<String> = db
+        let mut referenced: std::collections::HashSet<String> = db
             .get_all_thumb_filenames()
             .unwrap_or_default()
             .into_iter()
             .collect();
+
+        for legacy in db.get_all_legacy_thumb_filenames().unwrap_or_default() {
+            referenced.insert(legacy);
+        }
+
+        let orphan_mappings = db.delete_orphan_thumb_mappings().unwrap_or(0);
         drop(db);
 
         let mut deleted = 0usize;
@@ -539,8 +545,8 @@ impl MainWindow {
             }
         }
 
-        app.scan_status = format!("已刪除 {} 個未使用的縮圖", deleted);
-        info!("Cleaned {} unused thumbnails", deleted);
+        app.scan_status = format!("已刪除 {} 個未使用的縮圖，清理 {} 筆無效紀錄", deleted, orphan_mappings);
+        info!("Cleaned {} unused thumbnails, {} orphan mappings", deleted, orphan_mappings);
     }
 
     fn start_scan(app: &mut App) {

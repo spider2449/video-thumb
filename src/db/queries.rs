@@ -330,4 +330,43 @@ impl Database {
             .collect::<SqliteResult<Vec<_>>>()?;
         Ok(filenames)
     }
+
+    pub fn get_all_legacy_thumb_filenames(&self) -> SqliteResult<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT thumbnail_path FROM files WHERE thumbnail_path IS NOT NULL"
+        )?;
+        let filenames = stmt
+            .query_map([], |row| {
+                let path: String = row.get(0)?;
+                Ok(std::path::PathBuf::from(&path)
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or(path))
+            })?
+            .collect::<SqliteResult<Vec<_>>>()?;
+        Ok(filenames)
+    }
+
+    pub fn delete_orphan_thumb_mappings(&self) -> SqliteResult<usize> {
+        let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
+        let mut stmt = self.conn.prepare(
+            "SELECT file_id, thumb_filename FROM thumbnail_map"
+        )?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        let mut deleted = 0;
+        for (file_id, filename) in rows {
+            let path = thumbs_dir.join(&filename);
+            if !path.exists() {
+                self.conn.execute(
+                    "DELETE FROM thumbnail_map WHERE file_id = ?1",
+                    [file_id],
+                )?;
+                deleted += 1;
+            }
+        }
+        Ok(deleted)
+    }
 }
