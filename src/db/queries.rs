@@ -275,3 +275,35 @@ impl Database {
         Ok(count > 0)
     }
 }
+
+// ============ Thumbnails ============
+
+impl Database {
+    pub fn get_thumb_filename(&self, file_id: i64) -> SqliteResult<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT thumb_filename FROM thumbnail_map WHERE file_id = ?1"
+        )?;
+        let result = stmt.query_row([file_id], |row| row.get(0));
+        match result {
+            Ok(filename) => Ok(Some(filename)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn set_thumb_filename(&self, file_id: i64, filename: &str) -> SqliteResult<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO thumbnail_map (file_id, thumb_filename) VALUES (?1, ?2)",
+            params![file_id, filename],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_thumb_mapping(&self, file_id: i64) -> SqliteResult<()> {
+        self.conn.execute(
+            "DELETE FROM thumbnail_map WHERE file_id = ?1",
+            [file_id],
+        )?;
+        Ok(())
+    }
+}
