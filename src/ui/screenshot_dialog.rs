@@ -142,10 +142,13 @@ impl ScreenshotDialog {
                 ui.add_space(4.0);
 
                 let prev_time = self.current_time;
+                let original_slider_width = ui.spacing().slider_width;
+                ui.spacing_mut().slider_width = available_w;
                 ui.add(
                     egui::Slider::new(&mut self.current_time, 0.0..=self.total_duration)
                         .show_value(false),
                 );
+                ui.spacing_mut().slider_width = original_slider_width;
 
                 let total_mins = (self.total_duration / 60.0) as u32;
                 let total_secs = (self.total_duration % 60.0) as u32;
