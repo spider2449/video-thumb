@@ -1,5 +1,4 @@
 use crate::app::App;
-use crate::config::Config;
 use crate::lang::Lang;
 use eframe::egui;
 
@@ -40,7 +39,7 @@ impl SettingsDialog {
         self.selected_lang = Lang::from_setting(
             &db.get_setting("language").ok().flatten().unwrap_or_else(|| "zh_tw".to_string())
         );
-        let config = Config::load();
+        let config = crate::utils::get_config();
         self.data_dir = config.data_dir
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
@@ -158,13 +157,15 @@ impl SettingsDialog {
 
         app.lang = self.selected_lang;
 
-        let mut config = Config::load();
+        let mut config = crate::utils::get_config();
         if self.data_dir.is_empty() {
             config.clear_data_dir();
         } else {
             config.set_data_dir(std::path::PathBuf::from(&self.data_dir));
         }
         config.save().map_err(|e| format!("{}{}", crate::lang::t(lang, "save_cache_dir_failed_prefix"), e))?;
+
+        crate::utils::reload_config();
 
         Ok(())
     }

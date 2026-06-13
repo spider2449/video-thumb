@@ -41,6 +41,7 @@ fn main() -> Result<(), eframe::Error> {
         .format_timestamp_millis()
         .init();
 
+    utils::init_config();
     info!("Starting Video Thumb Viewer");
 
     // Set panic hook to log panics
@@ -57,7 +58,7 @@ fn main() -> Result<(), eframe::Error> {
     }));
 
     // Load window state from config
-    let config = config::Config::load();
+    let config = utils::get_config();
     let window_state = config.get_window_state();
 
     let viewport = egui::ViewportBuilder::default()

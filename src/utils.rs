@@ -1,11 +1,40 @@
 use std::path::PathBuf;
+use std::sync::{OnceLock, RwLock};
 
-/// Get the effective data directory from config or system default
+use crate::config::Config;
+
+static CONFIG_CACHE: OnceLock<RwLock<Config>> = OnceLock::new();
+
+pub fn init_config() {
+    let config = Config::load();
+    CONFIG_CACHE.set(RwLock::new(config)).ok();
+}
+
+pub fn reload_config() {
+    if let Some(cache) = CONFIG_CACHE.get() {
+        let config = Config::load();
+        if let Ok(mut guard) = cache.write() {
+            *guard = config;
+        }
+    }
+}
+
+pub fn get_config() -> Config {
+    if let Some(cache) = CONFIG_CACHE.get() {
+        if let Ok(guard) = cache.read() {
+            return guard.clone();
+        }
+    }
+    Config::default()
+}
+
 pub fn get_data_dir() -> PathBuf {
-    let config = crate::config::Config::load();
-    let dir = config.get_data_dir();
-    log::info!("get_data_dir() resolved to: {:?}", dir);
-    dir
+    if let Some(cache) = CONFIG_CACHE.get() {
+        if let Ok(guard) = cache.read() {
+            return guard.get_data_dir();
+        }
+    }
+    Config::default().get_data_dir()
 }
 
 /// Find ffmpeg executable: first next to exe, then in data_dir/ffmpeg/, then in PATH

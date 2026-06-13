@@ -22,7 +22,7 @@ impl Default for WindowState {
 }
 
 /// Application configuration stored in config.json (in exe directory)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Custom data directory for thumbnails and database.
     /// If not set, defaults to system data_local_dir
