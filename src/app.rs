@@ -34,6 +34,8 @@ pub struct App {
     pub thumbnail_progress: Option<(usize, usize)>,
     pub thumb_progress_rx: Option<std::sync::mpsc::Receiver<usize>>,
     pub thumb_done_rx: Option<std::sync::mpsc::Receiver<i64>>,
+    pub files_load_rx: Option<std::sync::mpsc::Receiver<(i64, Vec<crate::db::FileEntry>, std::collections::HashMap<i64, Vec<i64>>)>>,
+    pub clean_thumbs_rx: Option<std::sync::mpsc::Receiver<String>>,
     // Dialog state
     pub add_path_path: String,
     pub add_path_display_name: String,
@@ -132,6 +134,8 @@ impl App {
             thumbnail_progress: None,
             thumb_progress_rx: None,
             thumb_done_rx: None,
+            files_load_rx: None,
+            clean_thumbs_rx: None,
             filter_cache: None,
             scroll_to_idx: None,
             lang,
@@ -153,33 +157,18 @@ impl App {
     pub fn load_files_for_path(&mut self, path_id: i64) {
         self.texture_cache.clear();
         self.loading_files = true;
-        let db_guard = self.db.safe_lock();
-        match db_guard.get_files_for_path(path_id) {
-            Ok(files) => {
-                log::info!("Loaded {} files for path_id={}", files.len(), path_id);
-                // Clear stale tag map entries for this path's previous files
-                if let Some(old_files) = self.files.get(&path_id) {
-                    for file in old_files.iter() {
-                        self.file_tag_map.remove(&file.id);
-                    }
-                }
-                // Build tag map with a single batch query
-                match db_guard.get_all_file_tags(path_id) {
-                    Ok(tag_map) => {
-                        self.file_tag_map.extend(tag_map);
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to load file tags: {:?}", e);
-                    }
-                }
-                self.files.insert(path_id, Arc::new(files));
-            }
-            Err(e) => {
-                log::error!("Failed to load files for path_id={}: {:?}", path_id, e);
-            }
-        }
-        self.filter_cache = None;
-        self.loading_files = false;
+
+        let db = self.db.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.files_load_rx = Some(rx);
+
+        std::thread::spawn(move || {
+            let db_guard = db.safe_lock();
+            let files = db_guard.get_files_for_path(path_id).unwrap_or_default();
+            let tag_map = db_guard.get_all_file_tags(path_id).unwrap_or_default();
+            drop(db_guard);
+            let _ = tx.send((path_id, files, tag_map));
+        });
     }
 
     pub fn get_current_files(&mut self) -> Arc<Vec<FileEntry>> {
@@ -506,6 +495,34 @@ impl App {
                 ctx.request_repaint();
             } else {
                 self.thumb_done_rx = Some(rx);
+            }
+        }
+
+        if let Some(rx) = self.files_load_rx.as_ref() {
+            if let Ok((path_id, files, tag_map)) = rx.try_recv() {
+                self.files_load_rx = None;
+                self.loading_files = false;
+
+                if let Some(old_files) = self.files.get(&path_id) {
+                    for file in old_files.iter() {
+                        self.file_tag_map.remove(&file.id);
+                    }
+                }
+
+                self.file_tag_map.extend(tag_map);
+                self.files.insert(path_id, Arc::new(files));
+                self.filter_cache = None;
+
+                ctx.request_repaint();
+            }
+        }
+
+        if let Some(rx) = self.clean_thumbs_rx.as_ref() {
+            if let Ok(msg) = rx.try_recv() {
+                self.clean_thumbs_rx = None;
+                self.scanning = false;
+                self.scan_status = msg;
+                ctx.request_repaint();
             }
         }
 

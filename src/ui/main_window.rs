@@ -496,52 +496,62 @@ impl MainWindow {
     }
 
     fn clean_unused_thumbnails(app: &mut App) {
-        let lang = app.lang;
         let data_dir = crate::utils::get_data_dir();
         let thumbs_dir = data_dir.join("thumbs");
+
         if !thumbs_dir.exists() {
+            let lang = app.lang;
             app.scan_status = crate::lang::t(lang, "thumbs_dir_not_exist").to_string();
             return;
         }
 
-        let db = app.db.safe_lock();
-        let mut referenced: std::collections::HashSet<String> = db
-            .get_all_thumb_filenames()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        let db = app.db.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.clean_thumbs_rx = Some(rx);
+        app.scanning = true;
+        app.scan_status = "Cleaning thumbnails...".to_string();
 
-        for legacy in db.get_all_legacy_thumb_filenames().unwrap_or_default() {
-            referenced.insert(legacy);
-        }
+        std::thread::spawn(move || {
+            let db_guard = db.safe_lock();
 
-        let orphan_mappings = db.delete_orphan_thumb_mappings().unwrap_or(0);
-        drop(db);
+            let mut referenced: std::collections::HashSet<String> = db_guard
+                .get_all_thumb_filenames()
+                .unwrap_or_default()
+                .into_iter()
+                .collect();
 
-        let mut deleted = 0usize;
-        let entries = match std::fs::read_dir(&thumbs_dir) {
-            Ok(e) => e,
-            Err(e) => {
-                app.scan_status = format!("{}{}", crate::lang::t(lang, "cannot_read_thumbs_dir_prefix"), e);
-                return;
+            for legacy in db_guard.get_all_legacy_thumb_filenames().unwrap_or_default() {
+                referenced.insert(legacy);
             }
-        };
 
-        for entry in entries {
-            let entry = match entry {
+            let orphan_mappings = db_guard.delete_orphan_thumb_mappings().unwrap_or(0);
+            drop(db_guard);
+
+            let mut deleted = 0usize;
+            let entries = match std::fs::read_dir(&thumbs_dir) {
                 Ok(e) => e,
-                Err(_) => continue,
+                Err(e) => {
+                    let _ = tx.send(format!("Cannot read thumbs dir: {}", e));
+                    return;
+                }
             };
-            let filename = entry.file_name().to_string_lossy().to_string();
-            if !referenced.contains(&filename) {
-                if std::fs::remove_file(entry.path()).is_ok() {
-                    deleted += 1;
+
+            for entry in entries {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let filename = entry.file_name().to_string_lossy().to_string();
+                if !referenced.contains(&filename) {
+                    if std::fs::remove_file(entry.path()).is_ok() {
+                        deleted += 1;
+                    }
                 }
             }
-        }
 
-        app.scan_status = format!("{}{}{}{}{}", crate::lang::t(lang, "cleaned_thumbs_prefix"), deleted, crate::lang::t(lang, "cleaned_thumbs_mid"), orphan_mappings, crate::lang::t(lang, "cleaned_thumbs_suffix"));
-        info!("Cleaned {} unused thumbnails, {} orphan mappings", deleted, orphan_mappings);
+            let msg = format!("Deleted {} unused thumbnails, cleaned {} orphan records", deleted, orphan_mappings);
+            let _ = tx.send(msg);
+        });
     }
 
     fn start_scan(app: &mut App) {
