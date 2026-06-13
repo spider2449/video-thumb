@@ -29,7 +29,10 @@ impl SettingsDialog {
         self.player_path = db.get_setting("default_player")
             .ok()
             .flatten()
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
         self.thumb_size = db.get_setting("thumb_size")
             .ok()
             .flatten()
@@ -133,7 +136,8 @@ impl SettingsDialog {
         let lang = app.lang;
         let db = app.db.lock().unwrap();
 
-        db.set_setting("default_player", &self.player_path)
+        let clean_path = self.player_path.trim_matches('"').trim_matches('\'').to_string();
+        db.set_setting("default_player", &clean_path)
             .map_err(|e| format!("{}{}", crate::lang::t(lang, "save_player_failed_prefix"), e))?;
 
         let size: u32 = self.thumb_size.parse()

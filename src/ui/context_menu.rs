@@ -187,20 +187,7 @@ impl ContextMenu {
     }
 
     fn play_file_internal(&self, file_path: &str, app: &App) {
-        let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
-            log::error!("ffmpeg not found");
-            return;
-        };
-
-        let player = app.db.lock().unwrap()
-            .get_setting("default_player")
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-
-        let root_dir = crate::utils::get_data_dir();
-        let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
-        generator.play_video(file_path, &player).ok();
+        app.play_video_file(file_path);
     }
 
     fn apply_rating(&mut self, file_id: i64, rating: i32, app: &mut App) {

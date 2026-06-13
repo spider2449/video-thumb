@@ -8,32 +8,40 @@ pub fn get_data_dir() -> PathBuf {
     dir
 }
 
-/// Find ffmpeg executable: first in data_dir/ffmpeg/, then in PATH
+/// Find ffmpeg executable: first next to exe, then in data_dir/ffmpeg/, then in PATH
 pub fn get_ffmpeg_path() -> Option<PathBuf> {
-    let ffmpeg_dir = get_data_dir().join("ffmpeg");
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
 
     #[cfg(target_os = "windows")]
     {
-        let path = ffmpeg_dir.join("ffmpeg.exe");
-        if path.exists() {
-            return Some(path);
+        let candidates = [
+            exe_dir.join("ffmpeg").join("ffmpeg.exe"),
+            exe_dir.join("ffmpeg.exe"),
+            get_data_dir().join("ffmpeg").join("ffmpeg.exe"),
+        ];
+        for path in &candidates {
+            if path.exists() {
+                return Some(path.clone());
+            }
         }
-        if std::process::Command::new("where")
-            .arg("ffmpeg")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .is_some()
-        {
-            return Some(PathBuf::from("ffmpeg"));
+        if let Ok(output) = std::process::Command::new("where").arg("ffmpeg").output() {
+            if output.status.success() {
+                return Some(PathBuf::from("ffmpeg"));
+            }
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let path = ffmpeg_dir.join("ffmpeg");
-        if path.exists() {
-            return Some(path);
+        let candidates = [
+            exe_dir.join("ffmpeg").join("ffmpeg"),
+            exe_dir.join("ffmpeg"),
+            get_data_dir().join("ffmpeg").join("ffmpeg"),
+        ];
+        for path in &candidates {
+            if path.exists() {
+                return Some(path.clone());
+            }
         }
         return Some(PathBuf::from("ffmpeg"));
     }
@@ -41,32 +49,40 @@ pub fn get_ffmpeg_path() -> Option<PathBuf> {
     None
 }
 
-/// Find ffprobe executable: first in data_dir/ffmpeg/, then in PATH
+/// Find ffprobe executable: first next to exe, then in data_dir/ffmpeg/, then in PATH
 pub fn get_ffprobe_path() -> Option<PathBuf> {
-    let ffmpeg_dir = get_data_dir().join("ffmpeg");
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
 
     #[cfg(target_os = "windows")]
     {
-        let path = ffmpeg_dir.join("ffprobe.exe");
-        if path.exists() {
-            return Some(path);
+        let candidates = [
+            exe_dir.join("ffmpeg").join("ffprobe.exe"),
+            exe_dir.join("ffprobe.exe"),
+            get_data_dir().join("ffmpeg").join("ffprobe.exe"),
+        ];
+        for path in &candidates {
+            if path.exists() {
+                return Some(path.clone());
+            }
         }
-        if std::process::Command::new("where")
-            .arg("ffprobe")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .is_some()
-        {
-            return Some(PathBuf::from("ffprobe"));
+        if let Ok(output) = std::process::Command::new("where").arg("ffprobe").output() {
+            if output.status.success() {
+                return Some(PathBuf::from("ffprobe"));
+            }
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let path = ffmpeg_dir.join("ffprobe");
-        if path.exists() {
-            return Some(path);
+        let candidates = [
+            exe_dir.join("ffmpeg").join("ffprobe"),
+            exe_dir.join("ffprobe"),
+            get_data_dir().join("ffmpeg").join("ffprobe"),
+        ];
+        for path in &candidates {
+            if path.exists() {
+                return Some(path.clone());
+            }
         }
         return Some(PathBuf::from("ffprobe"));
     }

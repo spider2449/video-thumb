@@ -53,7 +53,6 @@ pub struct App {
     // Language
     pub lang: Lang,
     pub texture_cache: HashMap<String, egui::TextureHandle>,
-    pub last_window_save: std::time::Instant,
 }
 
 pub struct ScanResult {
@@ -132,7 +131,6 @@ impl App {
             scroll_to_idx: None,
             lang,
             texture_cache: HashMap::new(),
-            last_window_save: std::time::Instant::now(),
         };
 
         if app.watched_paths.is_empty() {
@@ -264,13 +262,44 @@ impl App {
     pub fn play_video_file(&self, file_path: &str) {
         let player = self.db.lock().unwrap().get_setting("default_player")
             .ok().flatten().unwrap_or_default();
-        let player_str: &str = if player.is_empty() { "" } else { &player };
-        if let Some(ffp) = crate::utils::get_ffmpeg_path() {
-            let gen = crate::thumbnail::ThumbnailGenerator::new(&crate::utils::get_data_dir(), &ffp, self.db.clone());
-            if let Err(e) = gen.play_video(file_path, player_str) {
-                log::error!("Failed to play video: {}", e);
-            }
+        let player = player.trim_matches('"').trim_matches('\'').to_string();
+        if let Err(e) = self.play_video(file_path, &player) {
+            log::error!("Failed to play video: {}", e);
         }
+    }
+
+    fn play_video(&self, video_path: &str, player_path: &str) -> Result<(), String> {
+        let mut cmd = if player_path.is_empty() {
+            #[cfg(target_os = "windows")]
+            {
+                let mut c = std::process::Command::new("cmd");
+                c.args(["/C", "start", "", video_path]);
+                c
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut c = std::process::Command::new("open");
+                c.arg(video_path);
+                c
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let mut c = std::process::Command::new("xdg-open");
+                c.arg(video_path);
+                c
+            }
+            #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+            {
+                return Err("No default video player configured for this platform. Please set a custom player in settings.".to_string());
+            }
+        } else {
+            let mut c = std::process::Command::new(player_path);
+            c.arg(video_path);
+            c
+        };
+        cmd.spawn()
+            .map_err(|e| format!("Failed to start player: {}", e))?;
+        Ok(())
     }
 
     pub fn add_path(&mut self) {
@@ -414,21 +443,6 @@ impl App {
             drop(db_guard);
             self.apply_theme(ctx);
             self.theme_loaded = true;
-        }
-
-        if self.last_window_save.elapsed().as_secs() >= 5 {
-            let rect = ctx.input(|i| i.viewport().outer_rect);
-            if let Some(rect) = rect {
-                let mut config = crate::config::Config::load();
-                config.set_window_state(crate::config::WindowState {
-                    width: rect.width(),
-                    height: rect.height(),
-                    x: Some(rect.min.x),
-                    y: Some(rect.min.y),
-                });
-                let _ = config.save();
-            }
-            self.last_window_save = std::time::Instant::now();
         }
 
         // Toggle console with F12

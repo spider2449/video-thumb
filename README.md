@@ -55,6 +55,24 @@ cargo build --release
 
 The executable will be at `target/release/video-thumb-viewer.exe`
 
+### 4. Deploy ffmpeg
+
+For thumbnail generation and screenshot capture, copy the `ffmpeg/` folder next to the executable:
+
+```
+release/
+├── video-thumb-viewer.exe
+└── ffmpeg/
+    ├── ffmpeg.exe
+    └── ffprobe.exe
+```
+
+The app searches for ffmpeg in this order:
+1. `<exe_dir>/ffmpeg/` (recommended — bundle alongside the app)
+2. `<exe_dir>/` (same directory as the exe)
+3. `<data_dir>/ffmpeg/` (the cache directory)
+4. System `PATH`
+
 ## Usage
 
 1. Run the application
