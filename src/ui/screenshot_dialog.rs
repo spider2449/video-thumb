@@ -307,7 +307,7 @@ impl Default for ScreenshotDialog {
             file: FileEntry {
                 id: 0, path_id: 0, file_path: String::new(), file_name: String::new(),
                 file_ext: String::new(), thumbnail_path: None, file_size: 0,
-                modified_at: String::new(), rating: 0, has_custom_thumb: false, created_at: String::new(),
+                modified_at: chrono::Utc::now(), rating: 0, has_custom_thumb: false, created_at: chrono::Utc::now(),
             },
             current_time: 0.0,
             total_duration: 60.0,

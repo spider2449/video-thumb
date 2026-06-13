@@ -40,6 +40,9 @@ lru = "0.12"
 # Temp files
 tempfile = "3.10"
 
+# Lazy statics
+once_cell = "1.19"
+
 [build-dependencies]
 # Windows resource embedding (icon, manifest, etc.)
 winresource = "0.1"

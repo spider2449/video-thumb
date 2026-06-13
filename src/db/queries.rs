@@ -1,6 +1,13 @@
 use super::{Database, FileEntry, Tag, WatchedPath};
+use chrono::{NaiveDateTime, Utc};
 use log::info;
 use rusqlite::{params, Result as SqliteResult};
+
+fn parse_db_date(s: &str) -> chrono::DateTime<Utc> {
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+        .map(|ndt| ndt.and_utc())
+        .unwrap_or_else(|_| Utc::now())
+}
 
 // ============ Watched Paths ============
 
@@ -44,7 +51,7 @@ impl Database {
                     id: row.get(0)?,
                     path: row.get(1)?,
                     display_name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                    created_at: row.get(3)?,
+                    created_at: parse_db_date(&row.get::<_, String>(3)?),
                 })
             })?
             .collect::<SqliteResult<Vec<_>>>()?;
@@ -79,7 +86,7 @@ impl Database {
                 file.file_ext,
                 file.thumbnail_path,
                 file.file_size,
-                file.modified_at,
+                file.modified_at.format("%Y-%m-%d %H:%M:%S").to_string(),
                 file.rating,
                 file.has_custom_thumb,
             ],
@@ -125,7 +132,7 @@ impl Database {
                 params.push(Box::new(file.file_ext.clone()));
                 params.push(Box::new(file.thumbnail_path.clone()));
                 params.push(Box::new(file.file_size));
-                params.push(Box::new(file.modified_at.clone()));
+                params.push(Box::new(file.modified_at.format("%Y-%m-%d %H:%M:%S").to_string()));
                 params.push(Box::new(file.rating));
                 params.push(Box::new(file.has_custom_thumb));
             }
@@ -162,10 +169,10 @@ impl Database {
                     file_ext: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                     thumbnail_path,
                     file_size: row.get(6)?,
-                    modified_at: row.get(7)?,
+                    modified_at: parse_db_date(&row.get::<_, String>(7)?),
                     rating: row.get(8)?,
                     has_custom_thumb: row.get(9)?,
-                    created_at: row.get(10)?,
+                    created_at: parse_db_date(&row.get::<_, String>(10)?),
                 })
             })?
             .collect::<SqliteResult<Vec<_>>>()?;
@@ -194,10 +201,10 @@ impl Database {
                 file_ext: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
                 thumbnail_path,
                 file_size: row.get(6)?,
-                modified_at: row.get(7)?,
+                modified_at: parse_db_date(&row.get::<_, String>(7)?),
                 rating: row.get(8)?,
                 has_custom_thumb: row.get(9)?,
-                created_at: row.get(10)?,
+                created_at: parse_db_date(&row.get::<_, String>(10)?),
             })
         });
 
@@ -448,10 +455,10 @@ mod tests {
             file_ext: ext,
             thumbnail_path: None,
             file_size: 1024,
-            modified_at: "2025-01-01 00:00:00".to_string(),
+            modified_at: chrono::NaiveDateTime::parse_from_str("2025-01-01 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap().and_utc(),
             rating: 0,
             has_custom_thumb: false,
-            created_at: String::new(),
+            created_at: chrono::Utc::now(),
         }
     }
 

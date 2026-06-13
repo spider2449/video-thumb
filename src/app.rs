@@ -209,7 +209,7 @@ impl App {
         };
 
         // Clone for mutation (filtering + sorting)
-        let mut files: Vec<FileEntry> = (*base_files).clone();
+        let mut files = Arc::try_unwrap(base_files).unwrap_or_else(|arc| (*arc).clone());
 
         // Apply filters in-memory
         if !self.search_query.is_empty() {
@@ -338,7 +338,7 @@ impl App {
                             id,
                             path: path_str,
                             display_name,
-                            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                            created_at: chrono::Utc::now(),
                         });
                         self.current_path_id = Some(id);
                         self.show_add_path = false;

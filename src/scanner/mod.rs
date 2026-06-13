@@ -161,10 +161,10 @@ impl Scanner {
             file_ext,
             thumbnail_path: None,
             file_size: metadata.len() as i64,
-            modified_at: modified_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            modified_at,
             rating: 0,
             has_custom_thumb: false,
-            created_at: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            created_at: Utc::now(),
         })
     }
 }

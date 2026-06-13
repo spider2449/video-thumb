@@ -3,7 +3,7 @@ pub struct WatchedPath {
     pub id: i64,
     pub path: String,
     pub display_name: String,
-    pub created_at: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone)]
@@ -15,10 +15,10 @@ pub struct FileEntry {
     pub file_ext: String,
     pub thumbnail_path: Option<String>,
     pub file_size: i64,
-    pub modified_at: String,
+    pub modified_at: chrono::DateTime<chrono::Utc>,
     pub rating: i32,
     pub has_custom_thumb: bool,
-    pub created_at: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone)]

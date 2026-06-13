@@ -4130,6 +4130,7 @@ dependencies = [
  "log",
  "lru",
  "md5",
+ "once_cell",
  "rfd",
  "rusqlite",
  "serde",
