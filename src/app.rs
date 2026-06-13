@@ -440,7 +440,7 @@ impl App {
             self.egui_ctx = Some(ctx.clone());
         }
 
-        if self.scanning || self.thumbnail_progress.is_some() || self.loading_files {
+        if self.scanning {
             ctx.set_cursor_icon(egui::CursorIcon::Wait);
         }
 
@@ -492,11 +492,20 @@ impl App {
         // Poll thumbnail progress
         if let Some(rx) = self.thumb_progress_rx.as_ref() {
             let mut needs_repaint = false;
-            while let Ok(completed) = rx.try_recv() {
-                if let Some((_, total)) = self.thumbnail_progress {
-                    self.thumbnail_progress = Some((completed, total));
-                    self.scan_status = format!("{}{}{}{}", crate::lang::t(self.lang, "generating_thumbs_prefix"), completed, crate::lang::t(self.lang, "generating_thumbs_sep"), total);
-                    needs_repaint = true;
+            loop {
+                match rx.try_recv() {
+                    Ok(completed) => {
+                        if let Some((_, total)) = self.thumbnail_progress {
+                            self.thumbnail_progress = Some((completed, total));
+                            self.scan_status = format!("{}{}{}{}", crate::lang::t(self.lang, "generating_thumbs_prefix"), completed, crate::lang::t(self.lang, "generating_thumbs_sep"), total);
+                            needs_repaint = true;
+                        }
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        self.thumb_progress_rx = None;
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 }
             }
             if needs_repaint {

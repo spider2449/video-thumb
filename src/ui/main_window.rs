@@ -190,19 +190,56 @@ impl MainWindow {
                 let files = app.get_current_files();
                 let scroll_target = app.scroll_to_idx.take();
 
-                egui::ScrollArea::vertical()
+                let available_width = ctx.input(|i| i.screen_rect.width()) - 40.0;
+                let item_width = app.thumbnail_size;
+                let item_height = app.thumbnail_size + 50.0;
+                let items_per_row = (available_width / item_width).max(1.0) as usize;
+                let row_height = item_height + 4.0;
+                let total_rows = (files.len() + items_per_row - 1) / items_per_row;
+
+                let scroll_area = egui::ScrollArea::vertical()
                     .id_salt(egui::Id::new("file_scroll_area"))
-                    .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for (idx, file) in files.iter().enumerate() {
-                        if scroll_target == Some(idx) {
-                            ui.scroll_to_cursor(Some(egui::Align::TOP));
-                        }
-                        Self::show_thumbnail_item(ui, file, app.thumbnail_size, ctx, app);
+                    .auto_shrink([false; 2]);
+
+                let scroll_output = scroll_area.show(ui, |ui| {
+                    let clip_rect = ui.clip_rect();
+                    let cursor_min_y = ui.cursor().min.y;
+
+                    let visible_top = (clip_rect.min.y - cursor_min_y).max(0.0);
+                    let visible_bottom = (clip_rect.max.y - cursor_min_y).max(0.0);
+
+                    let first_visible_row = (visible_top / row_height).floor() as usize;
+                    let last_visible_row = ((visible_bottom / row_height).ceil() as usize).min(total_rows);
+
+                    let extra_rows = 2;
+                    let render_first = first_visible_row.saturating_sub(extra_rows);
+                    let render_last = (last_visible_row + extra_rows).min(total_rows);
+
+                    if render_first > 0 {
+                        ui.add_space(render_first as f32 * row_height);
                     }
+
+                    for row in render_first..render_last {
+                        ui.horizontal(|ui| {
+                            let start_idx = row * items_per_row;
+                            let end_idx = (start_idx + items_per_row).min(files.len());
+                            for idx in start_idx..end_idx {
+                                let file = &files[idx];
+                                if scroll_target == Some(idx) {
+                                    ui.scroll_to_cursor(Some(egui::Align::TOP));
+                                }
+                                Self::show_thumbnail_item(ui, file, app.thumbnail_size, ctx, app);
+                            }
+                        });
+                    }
+
+                    if render_last < total_rows {
+                        ui.add_space((total_rows - render_last) as f32 * row_height);
+                    }
+                });
+
+                let _ = scroll_output;
             });
-        });
-    });
 
     // Context menu overlay (rendered on top)
     {
