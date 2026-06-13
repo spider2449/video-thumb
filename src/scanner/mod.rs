@@ -47,6 +47,10 @@ impl Scanner {
         let db_files;
         {
             let db = self.db.lock().unwrap();
+            if let Err(e) = db.begin_transaction() {
+                error!("Failed to begin transaction: {:?}", e);
+            }
+
             for file_entry in &files {
                 if let Err(e) = db.upsert_file(&file_entry) {
                     error!("Failed to insert file: {:?}", e);
@@ -55,7 +59,6 @@ impl Scanner {
                 }
             }
 
-            // Delete records for files that no longer exist on disk
             let found_paths: HashSet<String> = files.iter()
                 .map(|f| f.file_path.clone())
                 .collect();
@@ -73,6 +76,10 @@ impl Scanner {
                 if deleted > 0 {
                     info!("Deleted {} stale records for files no longer on disk", deleted);
                 }
+            }
+
+            if let Err(e) = db.commit_transaction() {
+                error!("Failed to commit transaction: {:?}", e);
             }
 
             db_files = db.get_files_for_path(path_id).unwrap_or_default();
