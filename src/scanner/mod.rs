@@ -3,12 +3,14 @@ use chrono::{DateTime, Utc};
 use log::{error, info};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 
 pub struct Scanner {
     db: Arc<Mutex<Database>>,
     extensions: Vec<String>,
+    cancel_flag: Arc<AtomicBool>,
 }
 
 /// Result of a scan operation
@@ -18,8 +20,8 @@ pub struct ScanFileResult {
 }
 
 impl Scanner {
-    pub fn new(db: Arc<Mutex<Database>>, extensions: Vec<String>) -> Self {
-        Self { db, extensions }
+    pub fn new(db: Arc<Mutex<Database>>, extensions: Vec<String>, cancel_flag: Arc<AtomicBool>) -> Self {
+        Self { db, extensions, cancel_flag }
     }
 
     pub async fn scan_path(&self, path_id: i64, root_path: &str) -> Result<ScanFileResult, String> {
@@ -32,10 +34,10 @@ impl Scanner {
 
         let extensions = self.extensions.clone();
         let root_str = root_path.to_string();
+        let cancel_flag = self.cancel_flag.clone();
 
-        // Run blocking I/O on spawn_blocking
         let files = tokio::task::spawn_blocking(move || {
-            Self::blocking_scan(&root_str, path_id, &extensions)
+            Self::blocking_scan(&root_str, path_id, &extensions, &cancel_flag)
         })
         .await
         .map_err(|e| format!("task join error: {e}"))?;
@@ -102,15 +104,21 @@ impl Scanner {
         Ok(ScanFileResult { count, files_needing_thumbnails })
     }
 
-    fn blocking_scan(path: &str, path_id: i64, extensions: &[String]) -> Vec<FileEntry> {
+    fn blocking_scan(path: &str, path_id: i64, extensions: &[String], cancel_flag: &Arc<AtomicBool>) -> Vec<FileEntry> {
         let root = PathBuf::from(path);
         let mut entries = Vec::new();
 
-        for entry in WalkDir::new(&root)
+        for (i, entry) in WalkDir::new(&root)
             .follow_links(true)
             .into_iter()
             .filter_map(|e| e.ok())
+            .enumerate()
         {
+            if i % 100 == 0 && cancel_flag.load(Ordering::Relaxed) {
+                info!("Scan cancelled");
+                return entries;
+            }
+
             let file_path = entry.path();
             if !file_path.is_file() {
                 continue;

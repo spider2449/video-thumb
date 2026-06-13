@@ -2,7 +2,10 @@ use crate::db::{Database, FileEntry, SafeMutexExt, WatchedPath};
 use crate::lang::Lang;
 use crate::ui::{MainWindow, SettingsDialog, TagManager};
 use eframe::egui;
+use lru::LruCache;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 pub struct App {
@@ -52,7 +55,9 @@ pub struct App {
     pub scroll_to_idx: Option<usize>,
     // Language
     pub lang: Lang,
-    pub texture_cache: HashMap<String, egui::TextureHandle>,
+    pub texture_cache: LruCache<String, egui::TextureHandle>,
+    pub last_window_rect: Option<egui::Rect>,
+    pub scan_cancel_flag: Arc<AtomicBool>,
 }
 
 pub struct ScanResult {
@@ -130,7 +135,9 @@ impl App {
             filter_cache: None,
             scroll_to_idx: None,
             lang,
-            texture_cache: HashMap::new(),
+            texture_cache: LruCache::new(NonZeroUsize::new(200).unwrap()),
+            last_window_rect: None,
+            scan_cancel_flag: Arc::new(AtomicBool::new(false)),
         };
 
         if app.watched_paths.is_empty() {
@@ -429,6 +436,8 @@ impl App {
     }
 
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.last_window_rect = Some(ctx.screen_rect());
+
         if self.scanning || self.thumbnail_progress.is_some() || self.loading_files {
             ctx.set_cursor_icon(egui::CursorIcon::Wait);
         }
@@ -555,7 +564,16 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Window state will be saved via store_to_db call if available
+        if let Some(rect) = self.last_window_rect {
+            let mut config = crate::utils::get_config();
+            config.set_window_state(crate::config::WindowState {
+                width: rect.width(),
+                height: rect.height(),
+                x: Some(rect.min.x),
+                y: Some(rect.min.y),
+            });
+            config.save().ok();
+        }
     }
 
 }

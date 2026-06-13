@@ -4,6 +4,7 @@ use crate::App;
 use crate::scanner::Scanner;
 use eframe::egui;
 use log::info;
+use std::sync::atomic::Ordering;
 
 pub struct MainWindow {}
 
@@ -490,7 +491,7 @@ impl MainWindow {
         let size = [rgba.width() as usize, rgba.height() as usize];
         let color_img = egui::ColorImage { size, pixels: colors };
         let h = ctx.load_texture(&key, color_img, egui::TextureOptions::LINEAR);
-        app.texture_cache.insert(key, h.clone());
+        app.texture_cache.put(key, h.clone());
         Some(h)
     }
 
@@ -557,6 +558,10 @@ impl MainWindow {
         let db = app.db.clone();
         let extensions = app.db.safe_lock().get_video_extensions();
 
+        app.scan_cancel_flag.store(true, Ordering::Relaxed);
+        let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        app.scan_cancel_flag = cancel_flag.clone();
+
         app.scanning = true;
         app.scan_progress = 0.0;
         app.scan_status = crate::lang::t(app.lang, "scanning").to_string();
@@ -566,7 +571,7 @@ impl MainWindow {
         app.scan_complete_rx = Some(rx);
 
         std::thread::spawn(move || {
-            let scanner = Scanner::new(db.clone(), extensions);
+            let scanner = Scanner::new(db.clone(), extensions, cancel_flag);
             let result = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
