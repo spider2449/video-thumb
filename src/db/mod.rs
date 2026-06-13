@@ -112,6 +112,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_files_rating ON files(rating);
             CREATE INDEX IF NOT EXISTS idx_file_tags_file ON file_tags(file_id);
             CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag_id);
+            CREATE INDEX IF NOT EXISTS idx_files_file_name ON files(file_name);
+            CREATE INDEX IF NOT EXISTS idx_files_file_ext ON files(file_ext);
             ",
         )?;
         Ok(())
