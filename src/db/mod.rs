@@ -17,7 +17,15 @@ impl Database {
         let conn = Connection::open(path)?;
 
         // Enable foreign keys
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA cache_size = -64000;
+             PRAGMA temp_store = MEMORY;
+             PRAGMA mmap_size = 268435456;"
+        )?;
 
         let db = Self { conn };
         db.init_schema()?;
@@ -30,7 +38,12 @@ impl Database {
     #[cfg(test)]
     pub fn new_in_memory() -> SqliteResult<Self> {
         let conn = Connection::open_in_memory()?;
-        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA cache_size = -64000;
+             PRAGMA temp_store = MEMORY;"
+        )?;
         let db = Self { conn };
         db.init_schema()?;
         db.init_default_settings()?;
