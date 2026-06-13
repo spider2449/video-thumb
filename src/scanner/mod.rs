@@ -169,31 +169,3 @@ impl Scanner {
     }
 }
 
-pub fn get_file_duration(video_path: &str, ffmpeg_path: &Path) -> Option<f64> {
-    let output = std::process::Command::new(ffmpeg_path)
-        .args(["-i", video_path])
-        .args(["-hide_banner"])
-        .output()
-        .ok()?;
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let duration_line = stderr.lines().find(|l| l.contains("Duration:"))?;
-
-    let duration_str = duration_line
-        .split("Duration:")
-        .nth(1)?
-        .split(',')
-        .next()?
-        .trim();
-
-    let parts: Vec<&str> = duration_str.split(':').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-
-    let hours: f64 = parts[0].parse().ok()?;
-    let minutes: f64 = parts[1].parse().ok()?;
-    let seconds: f64 = parts[2].parse().ok()?;
-
-    Some(hours * 3600.0 + minutes * 60.0 + seconds)
-}

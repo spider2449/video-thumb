@@ -70,6 +70,7 @@ impl Database {
 // ============ Files ============
 
 impl Database {
+    #[allow(dead_code)]
     pub fn upsert_file(&self, file: &FileEntry) -> SqliteResult<i64> {
         self.conn.execute(
             "INSERT INTO files (path_id, file_path, file_name, file_ext, thumbnail_path, file_size, modified_at, rating, has_custom_thumb)
@@ -179,6 +180,7 @@ impl Database {
         Ok(files)
     }
 
+    #[allow(dead_code)]
     pub fn get_file_by_id(&self, file_id: i64) -> SqliteResult<Option<FileEntry>> {
         let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
         let mut stmt = self.conn.prepare(
@@ -340,13 +342,6 @@ impl Database {
         Ok(map)
     }
 
-    pub fn tag_name_exists(&self, name: &str) -> SqliteResult<bool> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT COUNT(*) FROM tags WHERE name = ?1")?;
-        let count: i32 = stmt.query_row([name], |row| row.get(0))?;
-        Ok(count > 0)
-    }
 }
 
 // ============ Thumbnails ============

@@ -67,10 +67,6 @@ impl ThumbnailGenerator {
         md5_path
     }
 
-    pub fn thumbnail_exists(&self, video_path: &str, file_id: Option<i64>) -> bool {
-        self.get_thumbnail_path(video_path, file_id).exists()
-    }
-
     pub fn generate_thumbnail(&self, video_path: &str, file_id: Option<i64>) -> Result<String, String> {
         let thumb_path = self.get_thumbnail_path(video_path, file_id);
 

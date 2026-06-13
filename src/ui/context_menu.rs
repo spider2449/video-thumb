@@ -6,8 +6,6 @@ use std::sync::Arc;
 
 pub struct ContextMenu {
     pub file: Option<FileEntry>,
-    pub add_tag_name: String,
-    pub time_input: String,
     pub click_pos: egui::Pos2,
 }
 
@@ -15,8 +13,6 @@ impl ContextMenu {
     pub fn new() -> Self {
         Self {
             file: None,
-            add_tag_name: String::new(),
-            time_input: String::new(),
             click_pos: egui::Pos2::ZERO,
         }
     }
@@ -210,51 +206,6 @@ impl ContextMenu {
         app.invalidate_cache();
     }
 
-    fn add_tag_internal(&mut self, file_id: i64, app: &mut App) {
-        let tag_name = self.add_tag_name.trim();
-        if tag_name.is_empty() {
-            return;
-        }
-
-        let db = app.db.safe_lock();
-
-        let tag_id = if let Ok(tags) = db.get_all_tags() {
-            if let Some(tag) = tags.iter().find(|t| t.name == tag_name) {
-                tag.id
-            } else {
-                db.create_tag(tag_name, "#808080").unwrap_or(0)
-            }
-        } else {
-            return;
-        };
-
-        db.add_tag_to_file(file_id, tag_id).ok();
-        app.tags = db.get_all_tags().unwrap_or_default();
-        self.add_tag_name.clear();
-    }
-
-    fn capture_screenshot_internal(&self, file: &FileEntry, app: &App) {
-        let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() else {
-            log::error!("ffmpeg not found");
-            return;
-        };
-
-        let time_seconds: f64 = if self.time_input.contains(':') {
-            parse_time_string(&self.time_input).unwrap_or(1.0)
-        } else {
-            self.time_input.parse().unwrap_or(1.0)
-        };
-
-        let root_dir = crate::utils::get_data_dir();
-        let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
-
-        if let Ok(thumb_path) = generator.generate_thumbnail_at_time(&file.file_path, time_seconds, Some(file.id)) {
-            app.db.safe_lock()
-                .update_thumbnail(file.id, &thumb_path)
-                .ok();
-        }
-    }
-
     fn reset_thumbnail_internal(&self, file: &FileEntry, app: &mut App) {
         if let Some(ffmpeg_path) = crate::utils::get_ffmpeg_path() {
             let root_dir = crate::utils::get_data_dir();
@@ -366,24 +317,5 @@ impl ContextMenu {
 impl Default for ContextMenu {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn parse_time_string(time: &str) -> Option<f64> {
-    let parts: Vec<&str> = time.split(':').collect();
-    match parts.len() {
-        1 => parts[0].parse().ok(),
-        2 => {
-            let min: f64 = parts[0].parse().ok()?;
-            let sec: f64 = parts[1].parse().ok()?;
-            Some(min * 60.0 + sec)
-        }
-        3 => {
-            let hr: f64 = parts[0].parse().ok()?;
-            let min: f64 = parts[1].parse().ok()?;
-            let sec: f64 = parts[2].parse().ok()?;
-            Some(hr * 3600.0 + min * 60.0 + sec)
-        }
-        _ => None,
     }
 }
