@@ -3,7 +3,7 @@ use md5;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use crate::db::Database;
+use crate::db::{Database, SafeMutexExt};
 
 pub struct ThumbnailGenerator {
     root_dir: PathBuf,
@@ -30,7 +30,7 @@ impl ThumbnailGenerator {
 
     pub fn get_thumbnail_path(&self, video_path: &str, file_id: Option<i64>) -> PathBuf {
         if let Some(fid) = file_id {
-            if let Ok(Some(filename)) = self.db.lock().unwrap().get_thumb_filename(fid) {
+            if let Ok(Some(filename)) = self.db.safe_lock().get_thumb_filename(fid) {
                 if !filename.contains('/') && !filename.contains('\\') && !filename.contains("..") {
                     let path = self.get_thumbs_dir().join(&filename);
                     if path.exists() {
@@ -50,7 +50,7 @@ impl ThumbnailGenerator {
                 let uuid = uuid::Uuid::new_v4().to_string();
                 let new_filename = format!("{}.jpg", uuid);
                 let new_path = self.get_thumbs_dir().join(&new_filename);
-                let db = self.db.lock().unwrap();
+                let db = self.db.safe_lock();
                 if std::fs::rename(&md5_path, &new_path).is_ok() {
                     if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                         log::error!("Failed to save mapping for file_id={}: {}", fid, e);
@@ -104,7 +104,7 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                let db = self.db.lock().unwrap();
+                let db = self.db.safe_lock();
                 if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
                     let _ = std::fs::remove_file(&final_path);
@@ -153,7 +153,7 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                let db = self.db.lock().unwrap();
+                let db = self.db.safe_lock();
                 if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
                     let _ = std::fs::remove_file(&final_path);
@@ -244,7 +244,7 @@ impl ThumbnailGenerator {
         let final_path = self.get_thumbs_dir().join(&new_filename);
         if std::fs::rename(&thumb_path, &final_path).is_ok() {
             if let Some(fid) = file_id {
-                let db = self.db.lock().unwrap();
+                let db = self.db.safe_lock();
                 if let Err(e) = db.set_thumb_filename(fid, &new_filename) {
                     log::error!("Failed to save thumbnail mapping for file_id={}: {}", fid, e);
                     let _ = std::fs::remove_file(&final_path);
@@ -259,45 +259,9 @@ impl ThumbnailGenerator {
         Ok(thumb_path.to_string_lossy().to_string())
     }
 
-    pub fn play_video(&self, video_path: &str, player_path: &str) -> Result<(), String> {
-        let mut cmd = if player_path.is_empty() {
-            #[cfg(target_os = "windows")]
-            {
-                let mut c = Command::new("cmd");
-                c.args(["/C", "start", "", video_path]);
-                c
-            }
-            #[cfg(target_os = "macos")]
-            {
-                let mut c = Command::new("open");
-                c.arg(video_path);
-                c
-            }
-            #[cfg(target_os = "linux")]
-            {
-                let mut c = Command::new("xdg-open");
-                c.arg(video_path);
-                c
-            }
-            #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-            {
-                return Err("No default video player configured for this platform. Please set a custom player in settings.".to_string());
-            }
-        } else {
-            let mut c = Command::new(player_path);
-            c.arg(video_path);
-            c
-        };
-
-        cmd.spawn()
-            .map_err(|e| format!("Failed to start player: {}", e))?;
-
-        Ok(())
-    }
-
     pub fn delete_thumbnail(&self, file_path: &str, file_id: Option<i64>) {
         if let Some(fid) = file_id {
-            let db = self.db.lock().unwrap();
+            let db = self.db.safe_lock();
             if let Ok(Some(filename)) = db.get_thumb_filename(fid) {
                 if !filename.contains('/') && !filename.contains('\\') && !filename.contains("..") {
                     let thumb_path = self.get_thumbs_dir().join(&filename);

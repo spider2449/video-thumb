@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::db::FileEntry;
+use crate::db::{FileEntry, SafeMutexExt};
 use eframe::egui;
 use std::sync::Arc;
 use std::time::Instant;
@@ -277,7 +277,7 @@ impl ScreenshotDialog {
         let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &ffmpeg_path, app.db.clone());
 
         if let Ok(thumb_path) = gen.generate_thumbnail_at_time(&self.file.file_path, self.current_time, Some(self.file.id)) {
-            let db_result = app.db.lock().unwrap()
+            let db_result = app.db.safe_lock()
                 .update_thumbnail(self.file.id, &thumb_path);
             if let Err(e) = db_result {
                 log::error!("Failed to update thumbnail in database: {}", e);

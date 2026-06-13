@@ -1,4 +1,4 @@
-use crate::db::{Database, FileEntry};
+use crate::db::{Database, FileEntry, SafeMutexExt};
 use chrono::{DateTime, Utc};
 use log::{error, info};
 use std::collections::HashSet;
@@ -46,7 +46,7 @@ impl Scanner {
 
         let db_files;
         {
-            let db = self.db.lock().unwrap();
+            let db = self.db.safe_lock();
             if let Err(e) = db.begin_transaction() {
                 error!("Failed to begin transaction: {:?}", e);
             }

@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::db::FileEntry;
+use crate::db::{FileEntry, SafeMutexExt};
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -63,7 +63,7 @@ impl ContextMenu {
                         ui.separator();
 
                         ui.label(crate::lang::t(lang, "tags_label"));
-                        let file_tags = app.db.lock().unwrap()
+                        let file_tags = app.db.safe_lock()
                             .get_tags_for_file(file_id)
                             .unwrap_or_default();
 
@@ -74,7 +74,7 @@ impl ContextMenu {
                             ui.horizontal(|ui| {
                                 ui.colored_label(color, &tag.name);
                                 if ui.button("×").clicked() {
-                                    app.db.lock().unwrap()
+                                    app.db.safe_lock()
                                         .remove_tag_from_file(file_id_copy, tag_id)
                                         .ok();
                                     app.file_tag_map.entry(file_id_copy)
@@ -98,7 +98,7 @@ impl ContextMenu {
                                     .show_ui(ui, |ui| {
                                         for (tag_id, tag_name, tag_color) in available_tags {
                                             if ui.selectable_label(false, egui::RichText::new(&tag_name).color(crate::utils::hex_to_color(&tag_color))).clicked() {
-                                                app.db.lock().unwrap()
+                                                app.db.safe_lock()
                                                     .add_tag_to_file(file_id, tag_id)
                                                     .ok();
                                                 app.file_tag_map.entry(file_id)
@@ -191,7 +191,7 @@ impl ContextMenu {
     }
 
     fn apply_rating(&mut self, file_id: i64, rating: i32, app: &mut App) {
-        app.db.lock().unwrap()
+        app.db.safe_lock()
             .update_file_rating(file_id, rating)
             .ok();
         app.files.values_mut()
@@ -216,7 +216,7 @@ impl ContextMenu {
             return;
         }
 
-        let db = app.db.lock().unwrap();
+        let db = app.db.safe_lock();
 
         let tag_id = if let Ok(tags) = db.get_all_tags() {
             if let Some(tag) = tags.iter().find(|t| t.name == tag_name) {
@@ -249,7 +249,7 @@ impl ContextMenu {
         let generator = crate::thumbnail::ThumbnailGenerator::new(&root_dir, &ffmpeg_path, app.db.clone());
 
         if let Ok(thumb_path) = generator.generate_thumbnail_at_time(&file.file_path, time_seconds, Some(file.id)) {
-            app.db.lock().unwrap()
+            app.db.safe_lock()
                 .update_thumbnail(file.id, &thumb_path)
                 .ok();
         }
@@ -263,7 +263,7 @@ impl ContextMenu {
             generator.delete_thumbnail(&file.file_path, Some(file.id));
 
             if let Ok(thumb_path) = generator.generate_thumbnail(&file.file_path, Some(file.id)) {
-                if app.db.lock().unwrap()
+                if app.db.safe_lock()
                     .update_thumbnail(file.id, &thumb_path)
                     .is_ok() {
                     for files in app.files.values_mut() {
@@ -307,7 +307,7 @@ impl ContextMenu {
     }
 
     fn remove_file_internal(&mut self, file: FileEntry, app: &mut App) {
-        app.db.lock().unwrap().delete_file(file.id).ok();
+        app.db.safe_lock().delete_file(file.id).ok();
 
         app.files.values_mut()
             .for_each(|files| {
@@ -344,7 +344,7 @@ impl ContextMenu {
         match move_result {
             Ok(_) => {
                 // Update database
-                app.db.lock().unwrap()
+                app.db.safe_lock()
                     .move_file(file.id, new_path_id, new_file_path)
                     .ok();
 

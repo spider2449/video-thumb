@@ -14,9 +14,9 @@ impl Database {
         Ok(self.conn.last_insert_rowid())
     }
 
-    pub fn remove_path(&self, path_id: i64) -> SqliteResult<()> {
+    pub fn remove_path(&mut self, path_id: i64) -> SqliteResult<()> {
         info!("Removing watched path: {}", path_id);
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.conn.transaction()?;
 
         // Delete file_tag associations for files in this path
         tx.execute(
@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn test_remove_path() {
-        let db = test_db();
+        let mut db = test_db();
         let id = db.add_path("/videos/a", "A").unwrap();
         db.remove_path(id).unwrap();
         assert!(!db.path_exists("/videos/a").unwrap());
@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn test_remove_path_cascades_files() {
-        let db = test_db();
+        let mut db = test_db();
         let path_id = db.add_path("/videos/a", "A").unwrap();
         db.upsert_file(&test_file(path_id, "/videos/a/test.mp4")).unwrap();
         db.remove_path(path_id).unwrap();

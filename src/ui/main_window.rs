@@ -1,4 +1,5 @@
 use crate::app::SortBy;
+use crate::db::SafeMutexExt;
 use crate::App;
 use crate::scanner::Scanner;
 use eframe::egui;
@@ -127,7 +128,7 @@ impl MainWindow {
                             } else {
                                 ctx.set_visuals(egui::Visuals::dark());
                             }
-                            let db = app.db.lock().unwrap();
+                            let db = app.db.safe_lock();
                             let _ = db.set_setting("theme", &app.current_theme);
                         }
 
@@ -231,7 +232,7 @@ impl MainWindow {
                 ui.horizontal_wrapped(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button(crate::lang::t(lang, "confirm_remove")).clicked() {
-                            let db = app.db.lock().unwrap();
+                            let mut db = app.db.safe_lock();
                             let should_remove = db.remove_path(path_id).is_ok();
                             drop(db);
                             if should_remove {
@@ -502,7 +503,7 @@ impl MainWindow {
             return;
         }
 
-        let db = app.db.lock().unwrap();
+        let db = app.db.safe_lock();
         let mut referenced: std::collections::HashSet<String> = db
             .get_all_thumb_filenames()
             .unwrap_or_default()
@@ -554,7 +555,7 @@ impl MainWindow {
             .unwrap();
 
         let db = app.db.clone();
-        let extensions = app.db.lock().unwrap().get_video_extensions();
+        let extensions = app.db.safe_lock().get_video_extensions();
 
         app.scanning = true;
         app.scan_progress = 0.0;

@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::db::Tag;
+use crate::db::{SafeMutexExt, Tag};
 use eframe::egui;
 
 const PRESET_COLORS: &[&str] = &[
@@ -59,7 +59,7 @@ impl TagManager {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let tag_id = tag.id;
                                 if ui.button(crate::lang::t(lang, "delete")).clicked() {
-                                    app.db.lock().unwrap().delete_tag(tag_id).ok();
+                                    app.db.safe_lock().delete_tag(tag_id).ok();
                                     app.tags.retain(|t| t.id != tag_id);
                                 }
                                 if ui.button(crate::lang::t(lang, "edit")).clicked() {
@@ -154,7 +154,7 @@ impl TagManager {
             return;
         }
 
-        let db = app.db.lock().unwrap();
+        let db = app.db.safe_lock();
         if db.update_tag(tag_id, name, &self.edit_color).is_ok() {
             if let Some(tag) = app.tags.iter_mut().find(|t| t.id == tag_id) {
                 tag.name = name.to_string();
@@ -171,7 +171,7 @@ impl TagManager {
             return;
         }
 
-        let db = app.db.lock().unwrap();
+        let db = app.db.safe_lock();
         match db.create_tag(name, &self.new_tag_color) {
             Ok(id) => {
                 app.tags.push(Tag {

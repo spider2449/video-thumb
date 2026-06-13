@@ -11,6 +11,16 @@ pub struct Database {
     conn: Connection,
 }
 
+pub trait SafeMutexExt<T> {
+    fn safe_lock(&self) -> std::sync::MutexGuard<'_, T>;
+}
+
+impl<T> SafeMutexExt<T> for std::sync::Mutex<T> {
+    fn safe_lock(&self) -> std::sync::MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 impl Database {
     pub fn new(path: &Path) -> SqliteResult<Self> {
         info!("Initializing database at: {:?}", path);

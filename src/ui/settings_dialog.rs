@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::db::SafeMutexExt;
 use crate::lang::Lang;
 use eframe::egui;
 
@@ -24,7 +25,7 @@ impl SettingsDialog {
     }
 
     pub fn load(&mut self, app: &App) {
-        let db = app.db.lock().unwrap();
+        let db = app.db.safe_lock();
         self.player_path = db.get_setting("default_player")
             .ok()
             .flatten()
@@ -133,7 +134,7 @@ impl SettingsDialog {
 
     fn save(&self, app: &mut App) -> Result<(), String> {
         let lang = app.lang;
-        let db = app.db.lock().unwrap();
+        let db = app.db.safe_lock();
 
         let clean_path = self.player_path.trim_matches('"').trim_matches('\'').to_string();
         db.set_setting("default_player", &clean_path)
