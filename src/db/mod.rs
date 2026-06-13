@@ -228,6 +228,7 @@ impl Database {
 
 impl Drop for Database {
     fn drop(&mut self) {
+        let _ = self.conn.execute_batch("PRAGMA optimize");
         info!("Closing database connection");
     }
 }
