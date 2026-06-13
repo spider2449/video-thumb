@@ -451,23 +451,28 @@ impl App {
 
         // Check for scan completion
         if let Some(rx) = self.scan_complete_rx.take() {
-            if let Ok(result) = rx.try_recv() {
-                self.scanning = false;
-                if result.success {
-                    self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), result.count, crate::lang::t(self.lang, "done_found_suffix"));
-                    // Always reload cache immediately after scan
-                    self.load_files_for_path(result.path_id);
-                    // Start thumbnail generation in background if needed
-                    if !result.files_needing_thumbnails.is_empty() {
-                        self.start_thumbnail_generation(result.files_needing_thumbnails, result.path_id);
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.scanning = false;
+                    if result.success {
+                        self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), result.count, crate::lang::t(self.lang, "done_found_suffix"));
+                        self.load_files_for_path(result.path_id);
+                        if !result.files_needing_thumbnails.is_empty() {
+                            self.start_thumbnail_generation(result.files_needing_thumbnails, result.path_id);
+                        }
+                    } else {
+                        self.scan_status = format!("{}{}", crate::lang::t(self.lang, "failed_prefix"), result.message);
                     }
-                } else {
-                    self.scan_status = format!("{}{}", crate::lang::t(self.lang, "failed_prefix"), result.message);
+                    ctx.request_repaint();
                 }
-                // Force UI update by requesting a repaint
-                ctx.request_repaint();
-            } else {
-                self.scan_complete_rx = Some(rx);
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.scanning = false;
+                    self.scan_status = "Scan thread died unexpectedly".to_string();
+                    log::error!("Scan thread died unexpectedly");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.scan_complete_rx = Some(rx);
+                }
             }
         }
 
@@ -488,41 +493,64 @@ impl App {
 
         // Check for thumbnail generation completion
         if let Some(rx) = self.thumb_done_rx.take() {
-            if let Ok(path_id) = rx.try_recv() {
-                self.thumbnail_progress = None;
-                self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), self.files.get(&path_id).map(|f| f.len()).unwrap_or(0), crate::lang::t(self.lang, "done_found_suffix"));
-                self.load_files_for_path(path_id);
-                ctx.request_repaint();
-            } else {
-                self.thumb_done_rx = Some(rx);
+            match rx.try_recv() {
+                Ok(path_id) => {
+                    self.thumbnail_progress = None;
+                    self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), self.files.get(&path_id).map(|f| f.len()).unwrap_or(0), crate::lang::t(self.lang, "done_found_suffix"));
+                    self.load_files_for_path(path_id);
+                    ctx.request_repaint();
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.thumbnail_progress = None;
+                    log::error!("Thumbnail generation thread died unexpectedly");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    self.thumb_done_rx = Some(rx);
+                }
             }
         }
 
         if let Some(rx) = self.files_load_rx.as_ref() {
-            if let Ok((path_id, files, tag_map)) = rx.try_recv() {
-                self.files_load_rx = None;
-                self.loading_files = false;
+            match rx.try_recv() {
+                Ok((path_id, files, tag_map)) => {
+                    self.files_load_rx = None;
+                    self.loading_files = false;
 
-                if let Some(old_files) = self.files.get(&path_id) {
-                    for file in old_files.iter() {
-                        self.file_tag_map.remove(&file.id);
+                    if let Some(old_files) = self.files.get(&path_id) {
+                        for file in old_files.iter() {
+                            self.file_tag_map.remove(&file.id);
+                        }
                     }
+
+                    self.file_tag_map.extend(tag_map);
+                    self.files.insert(path_id, Arc::new(files));
+                    self.filter_cache = None;
+
+                    ctx.request_repaint();
                 }
-
-                self.file_tag_map.extend(tag_map);
-                self.files.insert(path_id, Arc::new(files));
-                self.filter_cache = None;
-
-                ctx.request_repaint();
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.files_load_rx = None;
+                    self.loading_files = false;
+                    log::error!("File loading thread died unexpectedly");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
 
         if let Some(rx) = self.clean_thumbs_rx.as_ref() {
-            if let Ok(msg) = rx.try_recv() {
-                self.clean_thumbs_rx = None;
-                self.scanning = false;
-                self.scan_status = msg;
-                ctx.request_repaint();
+            match rx.try_recv() {
+                Ok(msg) => {
+                    self.clean_thumbs_rx = None;
+                    self.scanning = false;
+                    self.scan_status = msg;
+                    ctx.request_repaint();
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.clean_thumbs_rx = None;
+                    self.scanning = false;
+                    log::error!("Thumbnail cleanup thread died unexpectedly");
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
 
