@@ -137,6 +137,10 @@ impl Database {
     }
 
     fn migrate_thumbnails(&self) -> SqliteResult<()> {
+        if self.get_setting("thumbnail_migration_done")?.is_some() {
+            return Ok(());
+        }
+
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM files WHERE thumbnail_path IS NOT NULL",
             [],
@@ -144,6 +148,7 @@ impl Database {
         )?;
 
         if count == 0 {
+            self.set_setting("thumbnail_migration_done", "1")?;
             return Ok(());
         }
 
@@ -185,6 +190,7 @@ impl Database {
             }
         }
 
+        self.set_setting("thumbnail_migration_done", "1")?;
         Ok(())
     }
 
