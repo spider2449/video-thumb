@@ -22,3 +22,4 @@ target/
 ffmpeg/ffmpeg.exe
 ffmpeg/ffprobe.exe
 .claude/settings.local.json
+.worktrees/
