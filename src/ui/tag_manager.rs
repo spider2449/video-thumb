@@ -128,19 +128,15 @@ impl TagManager {
         ui.horizontal_wrapped(|ui| {
             for color in PRESET_COLORS {
                 let c = crate::utils::hex_to_color(color);
-                let rect_min = ui.cursor().min;
-                let rect = egui::Rect::from_min_size(rect_min, [20.0, 20.0].into());
+                let button = egui::Button::new("")
+                    .fill(c)
+                    .min_size([20.0, 20.0].into());
 
-                ui.painter().rect_filled(rect.shrink(1.0), 0.0, c);
-                ui.add_space(24.0);
-
-                if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    if rect.contains(hover_pos) && ui.input(|i| i.pointer.any_click()) {
-                        if is_edit {
-                            self.edit_color = color.to_string();
-                        } else {
-                            self.new_tag_color = color.to_string();
-                        }
+                if ui.add(button).clicked() {
+                    if is_edit {
+                        self.edit_color = color.to_string();
+                    } else {
+                        self.new_tag_color = color.to_string();
                     }
                 }
             }

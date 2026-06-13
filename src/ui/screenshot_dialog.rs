@@ -214,13 +214,19 @@ impl ScreenshotDialog {
         let time = self.current_time;
         let size = self.thumbnail_size;
         let file_id = self.file.id;
-        let data_dir = crate::utils::get_data_dir();
 
         let (tx, rx) = std::sync::mpsc::channel();
         self.preview_rx = Some(rx);
 
         std::thread::spawn(move || {
-            let temp_path = data_dir.join(format!("preview_{}.jpg", file_id));
+            let temp_file = match tempfile::NamedTempFile::with_suffix(".jpg") {
+                Ok(f) => f,
+                Err(e) => {
+                    let _ = tx.send(Err(format!("Failed to create temp file: {}", e)));
+                    return;
+                }
+            };
+            let temp_path = temp_file.path().to_path_buf();
 
             let time_str = format!("{:02}:{:02}:{:02}.{:03}",
                 (time / 3600.0) as u32,
@@ -243,21 +249,17 @@ impl ScreenshotDialog {
                         match image::open(&temp_path) {
                             Ok(img) => {
                                 let rgba = img.to_rgba8();
-                                let _ = std::fs::remove_file(&temp_path);
                                 Ok((rgba, format!("preview_{}", file_id)))
                             }
                             Err(e) => {
-                                let _ = std::fs::remove_file(&temp_path);
                                 Err(format!("Failed to decode preview image: {}", e))
                             }
                         }
                     } else {
-                        let _ = std::fs::remove_file(&temp_path);
                         Err(format!("ffmpeg failed: {}", String::from_utf8_lossy(&output.stderr)))
                     }
                 }
                 Err(e) => {
-                    let _ = std::fs::remove_file(&temp_path);
                     Err(format!("Failed to run ffmpeg: {}", e))
                 }
             };

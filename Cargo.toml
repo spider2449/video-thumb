@@ -37,6 +37,9 @@ rfd = "0.15"
 # LRU cache
 lru = "0.12"
 
+# Temp files
+tempfile = "3.10"
+
 [build-dependencies]
 # Windows resource embedding (icon, manifest, etc.)
 winresource = "0.1"

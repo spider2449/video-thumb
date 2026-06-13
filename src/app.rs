@@ -60,6 +60,7 @@ pub struct App {
     pub texture_cache: LruCache<String, egui::TextureHandle>,
     pub last_window_rect: Option<egui::Rect>,
     pub scan_cancel_flag: Arc<AtomicBool>,
+    pub search_last_changed: std::time::Instant,
 }
 
 pub struct ScanResult {
@@ -142,6 +143,7 @@ impl App {
             texture_cache: LruCache::new(NonZeroUsize::new(200).unwrap()),
             last_window_rect: None,
             scan_cancel_flag: Arc::new(AtomicBool::new(false)),
+            search_last_changed: std::time::Instant::now(),
         };
 
         if app.watched_paths.is_empty() {

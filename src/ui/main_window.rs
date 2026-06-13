@@ -66,7 +66,14 @@ impl MainWindow {
                     ui.separator();
 
                     ui.label(crate::lang::t(lang, "search"));
+                    let prev_query = app.search_query.clone();
                     ui.text_edit_singleline(&mut app.search_query);
+                    if app.search_query != prev_query {
+                        app.search_last_changed = std::time::Instant::now();
+                    }
+                    if app.search_last_changed.elapsed().as_millis() >= 200 {
+                        app.invalidate_cache();
+                    }
 
                     ui.separator();
 
@@ -366,16 +373,13 @@ impl MainWindow {
 }
 
     fn show_thumbnail_item(ui: &mut egui::Ui, file: &crate::db::FileEntry, size: f32, ctx: &egui::Context, app: &mut App) {
-    let thumb_rc: std::rc::Rc<std::cell::RefCell<Option<egui::Response>>> = std::rc::Rc::new(std::cell::RefCell::new(None));
-        let response = ui.allocate_ui([size, size + 50.0].into(), |ui| {
-    let thumb_rc2 = thumb_rc.clone();
+        ui.allocate_ui([size, size + 50.0].into(), |ui| {
             ui.vertical(|ui| {
                 let thumb_size_inner = size - 4.0;
                 let thumb_rect = ui.allocate_rect(
                     egui::Rect::from_min_size(ui.cursor().min, [thumb_size_inner, thumb_size_inner].into()),
                     egui::Sense::click_and_drag(),
                 );
-            *thumb_rc2.borrow_mut() = Some(thumb_rect.clone());
 
                 ui.painter().rect_filled(
                     thumb_rect.rect.shrink(1.0),
@@ -400,21 +404,17 @@ impl MainWindow {
                             let tex_size = tex.size_vec2();
                             let container_size = thumb_rect.rect.size();
 
-                            // Calculate aspect-ratio-preserving size
                             let aspect_tex = tex_size.x / tex_size.y;
                             let aspect_container = container_size.x / container_size.y;
 
                             let (draw_w, draw_h) = if aspect_tex > aspect_container {
-                                // Texture is wider than container - fit to width
                                 let h = container_size.x / aspect_tex;
                                 (container_size.x, h)
                             } else {
-                                // Texture is taller than container - fit to height
                                 let w = container_size.y * aspect_tex;
                                 (w, container_size.y)
                             };
 
-                            // Center the image within the container
                             let offset_x = (container_size.x - draw_w) / 2.0;
                             let offset_y = (container_size.y - draw_h) / 2.0;
                             let img_min = thumb_rect.rect.min + egui::Vec2::new(offset_x, offset_y);
@@ -439,7 +439,30 @@ impl MainWindow {
                     );
                 }
 
-                // Show full path under thumbnail
+                if thumb_rect.double_clicked() {
+                    app.play_video_file(&file.file_path);
+                }
+
+                if thumb_rect.clicked() && !thumb_rect.double_clicked() {
+                    app.selected_file_id = Some(file.id);
+                }
+
+                if thumb_rect.secondary_clicked() {
+                    if app.context_menu.is_none() {
+                        let mut menu = crate::ui::ContextMenu::new();
+                        menu.file = Some(file.clone());
+                        menu.click_pos = thumb_rect.interact_pointer_pos()
+                            .unwrap_or_else(|| thumb_rect.rect.min);
+                        app.context_menu = Some(menu);
+                    } else {
+                        if let Some(ref mut menu) = app.context_menu {
+                            menu.file = Some(file.clone());
+                            menu.click_pos = thumb_rect.interact_pointer_pos()
+                                .unwrap_or_else(|| thumb_rect.rect.min);
+                        }
+                    }
+                }
+
                 ui.label(egui::RichText::new(&file.file_path).size(10.0).color(egui::Color32::LIGHT_GRAY));
 
                 ui.horizontal_wrapped(|ui| {
@@ -450,34 +473,6 @@ impl MainWindow {
                 });
             });
         });
-
-        // Check thumb_rect for clicks since that's where click-and-drag sense was allocated
-    let thumb_response = match &*thumb_rc.borrow() { Some(r) => r.clone(), None => return };
-
-    if thumb_response.double_clicked() {
-        app.play_video_file(&file.file_path);
-        }
-
-        if thumb_response.clicked() && !thumb_response.double_clicked() {
-            app.selected_file_id = Some(file.id);
-        }
-
-        if thumb_response.secondary_clicked() {
-        if app.context_menu.is_none() {
-            let mut menu = crate::ui::ContextMenu::new();
-            menu.file = Some(file.clone());
-            menu.click_pos = thumb_response.interact_pointer_pos()
-                .unwrap_or_else(|| response.response.rect.min);
-            app.context_menu = Some(menu);
-        } else {
-            // Menu already open - just update file and position
-            if let Some(ref mut menu) = app.context_menu {
-                menu.file = Some(file.clone());
-                menu.click_pos = response.response.interact_pointer_pos()
-                    .unwrap_or_else(|| response.response.rect.min);
-            }
-        }
-    }
     }
 
     fn load_tex(ctx: &egui::Context, app: &mut App, path: &std::path::PathBuf) -> Option<egui::TextureHandle> {
