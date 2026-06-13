@@ -60,6 +60,7 @@ pub struct App {
     pub last_window_rect: Option<egui::Rect>,
     pub scan_cancel_flag: Arc<AtomicBool>,
     pub search_last_changed: std::time::Instant,
+    pub egui_ctx: Option<egui::Context>,
 }
 
 pub struct ScanResult {
@@ -142,6 +143,7 @@ impl App {
             last_window_rect: None,
             scan_cancel_flag: Arc::new(AtomicBool::new(false)),
             search_last_changed: std::time::Instant::now(),
+            egui_ctx: None,
         };
 
         if app.watched_paths.is_empty() {
@@ -169,6 +171,10 @@ impl App {
             drop(db_guard);
             let _ = tx.send((path_id, files, tag_map));
         });
+
+        if let Some(ctx) = &self.egui_ctx {
+            ctx.request_repaint();
+        }
     }
 
     pub fn get_current_files(&mut self) -> Arc<Vec<FileEntry>> {
@@ -422,10 +428,17 @@ impl App {
             }
             let _ = done_tx.send(path_id);
         });
+
+        if let Some(ctx) = &self.egui_ctx {
+            ctx.request_repaint();
+        }
     }
 
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.last_window_rect = Some(ctx.screen_rect());
+        if self.egui_ctx.is_none() {
+            self.egui_ctx = Some(ctx.clone());
+        }
 
         if self.scanning || self.thumbnail_progress.is_some() || self.loading_files {
             ctx.set_cursor_icon(egui::CursorIcon::Wait);

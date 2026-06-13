@@ -547,6 +547,10 @@ impl MainWindow {
             let msg = format!("Deleted {} unused thumbnails, cleaned {} orphan records", deleted, orphan_mappings);
             let _ = tx.send(msg);
         });
+
+        if let Some(ctx) = &app.egui_ctx {
+            ctx.request_repaint();
+        }
     }
 
     fn start_scan(app: &mut App) {
@@ -606,6 +610,10 @@ impl MainWindow {
                 }
             }
         });
+
+        if let Some(ctx) = &app.egui_ctx {
+            ctx.request_repaint();
+        }
     }
 
 }
