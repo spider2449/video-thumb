@@ -51,12 +51,10 @@ impl Scanner {
                 error!("Failed to begin transaction: {:?}", e);
             }
 
-            for file_entry in &files {
-                if let Err(e) = db.upsert_file(&file_entry) {
-                    error!("Failed to insert file: {:?}", e);
-                } else {
-                    count += 1;
-                }
+            if let Err(e) = db.upsert_files_batch(&files) {
+                error!("Failed to batch insert files: {:?}", e);
+            } else {
+                count = files.len();
             }
 
             let found_paths: HashSet<String> = files.iter()

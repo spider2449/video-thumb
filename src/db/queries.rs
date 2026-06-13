@@ -87,6 +87,58 @@ impl Database {
         Ok(self.conn.last_insert_rowid())
     }
 
+    pub fn upsert_files_batch(&self, files: &[FileEntry]) -> SqliteResult<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+
+        const BATCH_SIZE: usize = 500;
+
+        for chunk in files.chunks(BATCH_SIZE) {
+            let mut sql = String::from(
+                "INSERT INTO files (path_id, file_path, file_name, file_ext, thumbnail_path, file_size, modified_at, rating, has_custom_thumb) VALUES "
+            );
+
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() * 9);
+
+            for (i, file) in chunk.iter().enumerate() {
+                if i > 0 {
+                    sql.push_str(", ");
+                }
+                let offset = i * 9;
+                sql.push_str(&format!(
+                    "(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
+                    offset + 1,
+                    offset + 2,
+                    offset + 3,
+                    offset + 4,
+                    offset + 5,
+                    offset + 6,
+                    offset + 7,
+                    offset + 8,
+                    offset + 9
+                ));
+
+                params.push(Box::new(file.path_id));
+                params.push(Box::new(file.file_path.clone()));
+                params.push(Box::new(file.file_name.clone()));
+                params.push(Box::new(file.file_ext.clone()));
+                params.push(Box::new(file.thumbnail_path.clone()));
+                params.push(Box::new(file.file_size));
+                params.push(Box::new(file.modified_at.clone()));
+                params.push(Box::new(file.rating));
+                params.push(Box::new(file.has_custom_thumb));
+            }
+
+            sql.push_str(" ON CONFLICT(path_id, file_path) DO UPDATE SET file_name = excluded.file_name, thumbnail_path = COALESCE(excluded.thumbnail_path, files.thumbnail_path), file_size = excluded.file_size, modified_at = excluded.modified_at");
+
+            let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            self.conn.execute(&sql, params_ref.as_slice())?;
+        }
+
+        Ok(())
+    }
+
     pub fn get_files_for_path(&self, path_id: i64) -> SqliteResult<Vec<FileEntry>> {
         let thumbs_dir = crate::utils::get_data_dir().join("thumbs");
         let mut stmt = self.conn.prepare(
@@ -485,6 +537,40 @@ mod tests {
         let files = db.get_files_for_path(path_id).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].file_size, 200);
+    }
+
+    #[test]
+    fn test_batch_upsert() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+
+        let files = vec![
+            test_file(path_id, "/videos/a.mp4"),
+            test_file(path_id, "/videos/b.mp4"),
+            test_file(path_id, "/videos/c.mp4"),
+        ];
+
+        db.upsert_files_batch(&files).unwrap();
+
+        let result = db.get_files_for_path(path_id).unwrap();
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_batch_upsert_updates_existing() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+
+        let mut files = vec![test_file(path_id, "/videos/a.mp4")];
+        files[0].file_size = 100;
+        db.upsert_files_batch(&files).unwrap();
+
+        files[0].file_size = 200;
+        db.upsert_files_batch(&files).unwrap();
+
+        let result = db.get_files_for_path(path_id).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].file_size, 200);
     }
 
     #[test]
