@@ -70,9 +70,11 @@ impl MainWindow {
                     ui.text_edit_singleline(&mut app.search_query);
                     if app.search_query != prev_query {
                         app.search_last_changed = std::time::Instant::now();
+                        app.search_debounce_pending = true;
                     }
-                    if app.search_last_changed.elapsed().as_millis() >= 200 {
+                    if app.search_debounce_pending && app.search_last_changed.elapsed().as_millis() >= 200 {
                         app.invalidate_cache();
+                        app.search_debounce_pending = false;
                     }
 
                     ui.separator();

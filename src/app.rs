@@ -60,6 +60,7 @@ pub struct App {
     pub last_window_rect: Option<egui::Rect>,
     pub scan_cancel_flag: Arc<AtomicBool>,
     pub search_last_changed: std::time::Instant,
+    pub search_debounce_pending: bool,
     pub egui_ctx: Option<egui::Context>,
 }
 
@@ -143,6 +144,7 @@ impl App {
             last_window_rect: None,
             scan_cancel_flag: Arc::new(AtomicBool::new(false)),
             search_last_changed: std::time::Instant::now(),
+            search_debounce_pending: false,
             egui_ctx: None,
         };
 
@@ -627,7 +629,23 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        let is_focused = ctx.input(|i| i.focused);
+
         self.update_impl(ctx, frame);
+
+        let has_background_work = self.scanning
+            || self.loading_files
+            || self.scan_complete_rx.is_some()
+            || self.thumb_progress_rx.is_some()
+            || self.thumb_done_rx.is_some()
+            || self.files_load_rx.is_some()
+            || self.clean_thumbs_rx.is_some();
+
+        if has_background_work {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        } else if !is_focused {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+        }
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
