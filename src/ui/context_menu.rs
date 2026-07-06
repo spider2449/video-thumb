@@ -49,7 +49,7 @@ impl ContextMenu {
                         ui.horizontal(|ui| {
                             for i in 1..=5 {
                                 let star_symbol = if i <= current_rating { "★" } else { "☆" };
-                                let rating_val = i as i32;
+                                let rating_val = i;
                                 if ui.button(star_symbol).clicked() {
                                     self.apply_rating(file_id, rating_val, app);
                                 }
@@ -156,11 +156,10 @@ impl ContextMenu {
 
                         ui.separator();
 
-                        if file.has_custom_thumb {
-                            if ui.button(crate::lang::t(lang, "reset_thumb")).clicked() {
+                        if file.has_custom_thumb
+                            && ui.button(crate::lang::t(lang, "reset_thumb")).clicked() {
                                 self.reset_thumbnail_internal(&file, app);
                             }
-                        }
 
                         if ui.button(crate::lang::t(lang, "remove_record")).clicked() {
                             self.remove_file_internal(file_for_remove, app);
@@ -215,14 +214,14 @@ impl ContextMenu {
 
             if let Ok(thumb_path) = generator.generate_thumbnail(&file.file_path, Some(file.id)) {
                 if app.db.safe_lock()
-                    .update_thumbnail(file.id, &thumb_path)
+                    .clear_custom_thumb(file.id)
                     .is_ok() {
                     for files in app.files.values_mut() {
                         let mut vec = (**files).clone();
                         for f in vec.iter_mut() {
                             if f.id == file.id {
                                 f.thumbnail_path = Some(thumb_path.clone());
-                                f.has_custom_thumb = true;
+                                f.has_custom_thumb = false;
                             }
                         }
                         *files = Arc::new(vec);
@@ -276,6 +275,7 @@ impl ContextMenu {
             generator.delete_thumbnail(&file.file_path, Some(file.id));
         }
 
+        app.filter_cache = None;
         self.file = None;
     }
 

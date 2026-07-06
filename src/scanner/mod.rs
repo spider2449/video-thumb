@@ -36,7 +36,7 @@ impl Scanner {
         let root_str = root_path.to_string();
         let cancel_flag = self.cancel_flag.clone();
 
-        let files = tokio::task::spawn_blocking(move || {
+        let (files, scan_completed) = tokio::task::spawn_blocking(move || {
             Self::blocking_scan(&root_str, path_id, &extensions, &cancel_flag)
         })
         .await
@@ -59,23 +59,27 @@ impl Scanner {
                 count = files.len();
             }
 
-            let found_paths: HashSet<String> = files.iter()
-                .map(|f| f.file_path.clone())
-                .collect();
-            if let Ok(existing_files) = db.get_files_for_path(path_id) {
-                let mut deleted = 0;
-                for existing in &existing_files {
-                    if !found_paths.contains(&existing.file_path) {
-                        if let Err(e) = db.delete_file(existing.id) {
-                            error!("Failed to delete stale record for {}: {:?}", existing.file_path, e);
-                        } else {
-                            deleted += 1;
+            if scan_completed && !files.is_empty() {
+                let found_paths: HashSet<String> = files.iter()
+                    .map(|f| f.file_path.clone())
+                    .collect();
+                if let Ok(existing_files) = db.get_files_for_path(path_id) {
+                    let mut deleted = 0;
+                    for existing in &existing_files {
+                        if !found_paths.contains(&existing.file_path) {
+                            if let Err(e) = db.delete_file(existing.id) {
+                                error!("Failed to delete stale record for {}: {:?}", existing.file_path, e);
+                            } else {
+                                deleted += 1;
+                            }
                         }
                     }
+                    if deleted > 0 {
+                        info!("Deleted {} stale records for files no longer on disk", deleted);
+                    }
                 }
-                if deleted > 0 {
-                    info!("Deleted {} stale records for files no longer on disk", deleted);
-                }
+            } else if !scan_completed {
+                info!("Scan was cancelled; skipping stale-record cleanup to avoid data loss");
             }
 
             if let Err(e) = db.commit_transaction() {
@@ -104,7 +108,7 @@ impl Scanner {
         Ok(ScanFileResult { count, files_needing_thumbnails })
     }
 
-    fn blocking_scan(path: &str, path_id: i64, extensions: &[String], cancel_flag: &Arc<AtomicBool>) -> Vec<FileEntry> {
+    fn blocking_scan(path: &str, path_id: i64, extensions: &[String], cancel_flag: &Arc<AtomicBool>) -> (Vec<FileEntry>, bool) {
         let root = PathBuf::from(path);
         let mut entries = Vec::new();
 
@@ -116,7 +120,7 @@ impl Scanner {
         {
             if i % 100 == 0 && cancel_flag.load(Ordering::Relaxed) {
                 info!("Scan cancelled");
-                return entries;
+                return (entries, false);
             }
 
             let file_path = entry.path();
@@ -136,7 +140,7 @@ impl Scanner {
             }
         }
 
-        entries
+        (entries, true)
     }
 
     fn create_file_entry(path_id: i64, file_path: &Path) -> Option<FileEntry> {

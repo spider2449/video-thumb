@@ -234,6 +234,14 @@ impl Database {
         Ok(())
     }
 
+    pub fn clear_custom_thumb(&self, file_id: i64) -> SqliteResult<()> {
+        self.conn.execute(
+            "UPDATE files SET has_custom_thumb = FALSE, thumbnail_path = NULL WHERE id = ?1",
+            [file_id],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_file(&self, file_id: i64) -> SqliteResult<()> {
         self.conn
             .execute("DELETE FROM files WHERE id = ?1", [file_id])?;

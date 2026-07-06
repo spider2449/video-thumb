@@ -28,7 +28,7 @@ impl MainWindow {
                     }
 
                     let scan_text = if app.scanning {
-                        format!("{}{:.0}{}", crate::lang::t(lang, "scanning_prefix"), app.scan_progress * 100.0, crate::lang::t(lang, "scanning_suffix"))
+                        crate::lang::t(lang, "scanning").to_string()
                     } else {
                         crate::lang::t(lang, "update_db").to_string()
                     };
@@ -72,9 +72,14 @@ impl MainWindow {
                         app.search_last_changed = std::time::Instant::now();
                         app.search_debounce_pending = true;
                     }
-                    if app.search_debounce_pending && app.search_last_changed.elapsed().as_millis() >= 200 {
-                        app.invalidate_cache();
-                        app.search_debounce_pending = false;
+                    if app.search_debounce_pending {
+                        let elapsed = app.search_last_changed.elapsed().as_millis();
+                        if elapsed >= 200 {
+                            app.invalidate_cache();
+                            app.search_debounce_pending = false;
+                        } else {
+                            ctx.request_repaint_after(std::time::Duration::from_millis((200 - elapsed) as u64));
+                        }
                     }
 
                     ui.separator();
@@ -171,11 +176,10 @@ impl MainWindow {
                                     }
                                 }
 
-                                if selected {
-                                    if ui.button("×").clicked() {
+                                if selected
+                                    && ui.button("×").clicked() {
                                         app.remove_path_confirm = Some((*path_id, display_name.clone()));
                                     }
-                                }
                             }
                         });
                     ui.separator();
@@ -197,11 +201,17 @@ impl MainWindow {
                 let item_height = app.thumbnail_size + 50.0;
                 let items_per_row = (available_width / item_width).max(1.0) as usize;
                 let row_height = item_height + 4.0;
-                let total_rows = (files.len() + items_per_row - 1) / items_per_row;
+                let total_rows = files.len().div_ceil(items_per_row);
 
-                let scroll_area = egui::ScrollArea::vertical()
+                let mut scroll_area = egui::ScrollArea::vertical()
                     .id_salt(egui::Id::new("file_scroll_area"))
                     .auto_shrink([false; 2]);
+
+                if let Some(idx) = scroll_target {
+                    let target_row = idx / items_per_row.max(1);
+                    let target_y = target_row as f32 * row_height;
+                    scroll_area = scroll_area.vertical_scroll_offset(target_y);
+                }
 
                 let scroll_output = scroll_area.show(ui, |ui| {
                     let clip_rect = ui.clip_rect();
@@ -227,9 +237,6 @@ impl MainWindow {
                             let end_idx = (start_idx + items_per_row).min(files.len());
                             for idx in start_idx..end_idx {
                                 let file = &files[idx];
-                                if scroll_target == Some(idx) {
-                                    ui.scroll_to_cursor(Some(egui::Align::TOP));
-                                }
                                 Self::show_thumbnail_item(ui, file, app.thumbnail_size, ctx, app);
                             }
                         });
@@ -491,13 +498,13 @@ impl MainWindow {
                         let mut menu = crate::ui::ContextMenu::new();
                         menu.file = Some(file.clone());
                         menu.click_pos = thumb_rect.interact_pointer_pos()
-                            .unwrap_or_else(|| thumb_rect.rect.min);
+                            .unwrap_or(thumb_rect.rect.min);
                         app.context_menu = Some(menu);
                     } else {
                         if let Some(ref mut menu) = app.context_menu {
                             menu.file = Some(file.clone());
                             menu.click_pos = thumb_rect.interact_pointer_pos()
-                                .unwrap_or_else(|| thumb_rect.rect.min);
+                                .unwrap_or(thumb_rect.rect.min);
                         }
                     }
                 }
@@ -576,11 +583,10 @@ impl MainWindow {
                     Err(_) => continue,
                 };
                 let filename = entry.file_name().to_string_lossy().to_string();
-                if !referenced.contains(&filename) {
-                    if std::fs::remove_file(entry.path()).is_ok() {
+                if !referenced.contains(&filename)
+                    && std::fs::remove_file(entry.path()).is_ok() {
                         deleted += 1;
                     }
-                }
             }
 
             let msg = format!("Deleted {} unused thumbnails, cleaned {} orphan records", deleted, orphan_mappings);

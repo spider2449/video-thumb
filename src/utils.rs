@@ -122,12 +122,14 @@ pub fn get_ffprobe_path() -> Option<PathBuf> {
 /// Parse a hex color string (with or without #) into egui::Color32
 pub fn hex_to_color(hex: &str) -> egui::Color32 {
     let hex = hex.trim_start_matches('#');
-    if hex.len() >= 6 {
-        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(128);
-        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(128);
-        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
-        egui::Color32::from_rgb(r, g, b)
-    } else {
-        egui::Color32::GRAY
+    let parse = |slice: Option<&str>| slice.and_then(|s| u8::from_str_radix(s, 16).ok());
+    match (
+        hex.is_ascii(),
+        parse(hex.get(0..2)),
+        parse(hex.get(2..4)),
+        parse(hex.get(4..6)),
+    ) {
+        (true, Some(r), Some(g), Some(b)) => egui::Color32::from_rgb(r, g, b),
+        _ => egui::Color32::GRAY,
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "video-thumb-viewer"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "A video thumbnail viewer with SQLite storage"
 authors = ["You"]

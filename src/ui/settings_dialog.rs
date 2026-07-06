@@ -143,7 +143,7 @@ impl SettingsDialog {
         let size: u32 = self.thumb_size.parse()
             .map_err(|_| crate::lang::t(lang, "invalid_number").to_string())?;
 
-        if size < 64 || size > 1024 {
+        if !(64..=1024).contains(&size) {
             return Err(crate::lang::t(lang, "thumb_size_range").to_string());
         }
 

@@ -1,5 +1,4 @@
 use log::{error, info};
-use md5;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};

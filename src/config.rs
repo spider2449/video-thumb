@@ -23,6 +23,7 @@ impl Default for WindowState {
 
 /// Application configuration stored in config.json (in exe directory)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Config {
     /// Custom data directory for thumbnails and database.
     /// If not set, defaults to system data_local_dir
@@ -31,14 +32,6 @@ pub struct Config {
     pub window: Option<WindowState>,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            data_dir: None,
-            window: None,
-        }
-    }
-}
 
 impl Config {
     /// Get the path to config.json (in exe directory)

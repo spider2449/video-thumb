@@ -58,6 +58,7 @@ pub struct App {
     pub lang: Lang,
     pub texture_cache: LruCache<String, egui::TextureHandle>,
     pub last_window_rect: Option<egui::Rect>,
+    pub last_window_pos: Option<egui::Pos2>,
     pub scan_cancel_flag: Arc<AtomicBool>,
     pub search_last_changed: std::time::Instant,
     pub search_debounce_pending: bool,
@@ -73,15 +74,14 @@ pub struct ScanResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum SortBy {
+    #[default]
     Name,
     Date,
     Rating,
 }
 
-impl Default for SortBy {
-    fn default() -> Self { SortBy::Name }
-}
 
 impl App {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
@@ -142,6 +142,7 @@ impl App {
             lang,
             texture_cache: LruCache::new(NonZeroUsize::new(200).unwrap()),
             last_window_rect: None,
+            last_window_pos: None,
             scan_cancel_flag: Arc::new(AtomicBool::new(false)),
             search_last_changed: std::time::Instant::now(),
             search_debounce_pending: false,
@@ -276,8 +277,10 @@ impl App {
         let mut cmd = if player_path.is_empty() {
             #[cfg(target_os = "windows")]
             {
-                let mut c = std::process::Command::new("cmd");
-                c.args(["/C", "start", "", video_path]);
+                // Avoid `cmd /C start`, whose shell parsing breaks on `&` in paths.
+                // explorer.exe opens the file with its default association without a shell.
+                let mut c = std::process::Command::new("explorer");
+                c.arg(video_path);
                 c
             }
             #[cfg(target_os = "macos")]
@@ -416,12 +419,7 @@ impl App {
             for (i, file_path) in files.iter().enumerate() {
                 let file_id = path_to_id.get(file_path).copied();
                 match gen.generate_thumbnail_at_frame(file_path, 300, file_id) {
-                    Ok(thumb_path) => {
-                        if let Some(file_id) = file_id {
-                            let db_guard = db.safe_lock();
-                            let _ = db_guard.update_thumbnail(file_id, &thumb_path);
-                        }
-                    }
+                    Ok(_thumb_path) => {}
                     Err(e) => {
                         log::warn!("Failed to generate thumbnail for {}: {}", file_path, e);
                     }
@@ -438,6 +436,9 @@ impl App {
 
     fn update_impl(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.last_window_rect = Some(ctx.screen_rect());
+        if let Some(outer_rect) = ctx.input(|i| i.viewport().outer_rect) {
+            self.last_window_pos = Some(outer_rect.min);
+        }
         if self.egui_ctx.is_none() {
             self.egui_ctx = Some(ctx.clone());
         }
@@ -582,8 +583,11 @@ impl App {
 
         MainWindow::show_main(ctx, self);
 
-        // Keyboard navigation for selected video
+        // Keyboard navigation for selected video (skip while typing, e.g. search box)
         if let Some(selected_id) = self.selected_file_id {
+            if ctx.wants_keyboard_input() {
+                return;
+            }
             let current_files = self.get_current_files();
             if let Some(selected_idx) = current_files.iter().position(|f| f.id == selected_id) {
                 let screen_width = ctx.input(|i| i.screen_rect.width());
@@ -654,8 +658,8 @@ impl eframe::App for App {
             config.set_window_state(crate::config::WindowState {
                 width: rect.width(),
                 height: rect.height(),
-                x: Some(rect.min.x),
-                y: Some(rect.min.y),
+                x: self.last_window_pos.map(|p| p.x),
+                y: self.last_window_pos.map(|p| p.y),
             });
             config.save().ok();
         }
