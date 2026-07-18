@@ -31,9 +31,10 @@ cargo build --release  # Build release binary
 
 ## Data Locations
 
-- Database: `%LOCALAPPDATA%/video-thumb-viewer/data.db`
-- Thumbnails: `%LOCALAPPDATA%/video-thumb-viewer/thumbs/`
-- Config: `%LOCALAPPDATA%/video-thumb-viewer/config.json`
+- Config: `config.json` next to the executable
+- Data directory: `cache/` next to the executable by default, or the custom `data_dir` set in `config.json`
+- Database: `<data_dir>/data.db`
+- Thumbnails: `<data_dir>/thumbs/`
 
 ## Testing
 
