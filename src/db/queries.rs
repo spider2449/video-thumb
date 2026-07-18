@@ -67,6 +67,66 @@ impl Database {
     }
 }
 
+const UPSERT_BATCH_SIZE: usize = 500;
+
+fn upsert_files_chunked(conn: &rusqlite::Connection, files: &[FileEntry]) -> SqliteResult<()> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    for chunk in files.chunks(UPSERT_BATCH_SIZE) {
+        let mut sql = String::from(
+            "INSERT INTO files (path_id, file_path, file_name, file_ext, thumbnail_path, file_size, modified_at, rating, has_custom_thumb) VALUES "
+        );
+
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() * 9);
+
+        for (i, file) in chunk.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(", ");
+            }
+            let offset = i * 9;
+            sql.push_str(&format!(
+                "(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
+                offset + 1,
+                offset + 2,
+                offset + 3,
+                offset + 4,
+                offset + 5,
+                offset + 6,
+                offset + 7,
+                offset + 8,
+                offset + 9
+            ));
+
+            params.push(Box::new(file.path_id));
+            params.push(Box::new(file.file_path.clone()));
+            params.push(Box::new(file.file_name.clone()));
+            params.push(Box::new(file.file_ext.clone()));
+            params.push(Box::new(file.thumbnail_path.clone()));
+            params.push(Box::new(file.file_size));
+            params.push(Box::new(file.modified_at.format("%Y-%m-%d %H:%M:%S").to_string()));
+            params.push(Box::new(file.rating));
+            params.push(Box::new(file.has_custom_thumb));
+        }
+
+        sql.push_str(" ON CONFLICT(path_id, file_path) DO UPDATE SET file_name = excluded.file_name, thumbnail_path = COALESCE(excluded.thumbnail_path, files.thumbnail_path), file_size = excluded.file_size, modified_at = excluded.modified_at");
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&sql, params_ref.as_slice())?;
+    }
+
+    Ok(())
+}
+
+/// Result of syncing scanned files into the database.
+pub struct SyncStats {
+    pub upserted: usize,
+    pub stale_deleted: usize,
+    /// Thumb filenames of deleted stale records; caller removes these files from disk.
+    pub orphan_thumb_files: Vec<String>,
+}
+
 // ============ Files ============
 
 impl Database {
@@ -97,55 +157,62 @@ impl Database {
     }
 
     pub fn upsert_files_batch(&self, files: &[FileEntry]) -> SqliteResult<()> {
-        if files.is_empty() {
-            return Ok(());
-        }
+        upsert_files_chunked(&self.conn, files)
+    }
 
-        const BATCH_SIZE: usize = 500;
+    /// Upsert scanned files and (optionally) delete records for files no longer
+    /// on disk, all inside one transaction. Pass `delete_stale = false` when the
+    /// scan was cancelled part-way, so missing files are not treated as deleted.
+    pub fn sync_files_for_path(
+        &mut self,
+        path_id: i64,
+        files: &[FileEntry],
+        delete_stale: bool,
+    ) -> SqliteResult<SyncStats> {
+        let tx = self.conn.transaction()?;
 
-        for chunk in files.chunks(BATCH_SIZE) {
-            let mut sql = String::from(
-                "INSERT INTO files (path_id, file_path, file_name, file_ext, thumbnail_path, file_size, modified_at, rating, has_custom_thumb) VALUES "
-            );
+        upsert_files_chunked(&tx, files)?;
 
-            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() * 9);
+        let mut stale_deleted = 0;
+        let mut orphan_thumb_files = Vec::new();
 
-            for (i, file) in chunk.iter().enumerate() {
-                if i > 0 {
-                    sql.push_str(", ");
+        if delete_stale {
+            let found: std::collections::HashSet<&str> =
+                files.iter().map(|f| f.file_path.as_str()).collect();
+
+            let existing: Vec<(i64, String, Option<String>)> = {
+                let mut stmt = tx.prepare(
+                    "SELECT f.id, f.file_path, tm.thumb_filename
+                     FROM files f
+                     LEFT JOIN thumbnail_map tm ON tm.file_id = f.id
+                     WHERE f.path_id = ?1",
+                )?;
+                let rows = stmt
+                    .query_map([path_id], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                    })?
+                    .collect::<SqliteResult<Vec<_>>>()?;
+                rows
+            };
+
+            for (file_id, file_path, thumb_filename) in existing {
+                if !found.contains(file_path.as_str()) {
+                    tx.execute("DELETE FROM files WHERE id = ?1", [file_id])?;
+                    stale_deleted += 1;
+                    if let Some(filename) = thumb_filename {
+                        orphan_thumb_files.push(filename);
+                    }
                 }
-                let offset = i * 9;
-                sql.push_str(&format!(
-                    "(?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
-                    offset + 1,
-                    offset + 2,
-                    offset + 3,
-                    offset + 4,
-                    offset + 5,
-                    offset + 6,
-                    offset + 7,
-                    offset + 8,
-                    offset + 9
-                ));
-
-                params.push(Box::new(file.path_id));
-                params.push(Box::new(file.file_path.clone()));
-                params.push(Box::new(file.file_name.clone()));
-                params.push(Box::new(file.file_ext.clone()));
-                params.push(Box::new(file.thumbnail_path.clone()));
-                params.push(Box::new(file.file_size));
-                params.push(Box::new(file.modified_at.format("%Y-%m-%d %H:%M:%S").to_string()));
-                params.push(Box::new(file.rating));
-                params.push(Box::new(file.has_custom_thumb));
             }
-
-            sql.push_str(" ON CONFLICT(path_id, file_path) DO UPDATE SET file_name = excluded.file_name, thumbnail_path = COALESCE(excluded.thumbnail_path, files.thumbnail_path), file_size = excluded.file_size, modified_at = excluded.modified_at");
-
-            let params_ref: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            self.conn.execute(&sql, params_ref.as_slice())?;
         }
 
-        Ok(())
+        tx.commit()?;
+
+        Ok(SyncStats {
+            upserted: files.len(),
+            stale_deleted,
+            orphan_thumb_files,
+        })
     }
 
     pub fn get_files_for_path(&self, path_id: i64) -> SqliteResult<Vec<FileEntry>> {
@@ -598,6 +665,56 @@ mod tests {
         let result = db.get_files_for_path(path_id).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].file_size, 200);
+    }
+
+    #[test]
+    fn test_sync_files_upserts_and_deletes_stale() {
+        let mut db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+
+        let old = test_file(path_id, "/videos/old.mp4");
+        let old_id = db.upsert_file(&old).unwrap();
+        db.set_thumb_filename(old_id, "old-thumb.jpg").unwrap();
+
+        let new_files = vec![test_file(path_id, "/videos/new.mp4")];
+        let stats = db.sync_files_for_path(path_id, &new_files, true).unwrap();
+
+        assert_eq!(stats.upserted, 1);
+        assert_eq!(stats.stale_deleted, 1);
+        assert_eq!(stats.orphan_thumb_files, vec!["old-thumb.jpg".to_string()]);
+
+        let files = db.get_files_for_path(path_id).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_path, "/videos/new.mp4");
+    }
+
+    #[test]
+    fn test_sync_files_keeps_stale_when_delete_disabled() {
+        let mut db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+        db.upsert_file(&test_file(path_id, "/videos/old.mp4")).unwrap();
+
+        let new_files = vec![test_file(path_id, "/videos/new.mp4")];
+        let stats = db.sync_files_for_path(path_id, &new_files, false).unwrap();
+
+        assert_eq!(stats.stale_deleted, 0);
+        assert!(stats.orphan_thumb_files.is_empty());
+        assert_eq!(db.get_files_for_path(path_id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_sync_files_ignores_other_paths() {
+        let mut db = test_db();
+        let p1 = db.add_path("/a", "A").unwrap();
+        let p2 = db.add_path("/b", "B").unwrap();
+        db.upsert_file(&test_file(p2, "/b/keep.mp4")).unwrap();
+
+        let stats = db
+            .sync_files_for_path(p1, &[test_file(p1, "/a/one.mp4")], true)
+            .unwrap();
+
+        assert_eq!(stats.stale_deleted, 0);
+        assert_eq!(db.get_files_for_path(p2).unwrap().len(), 1);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 mod models;
 mod queries;
 
+pub use queries::SyncStats;
+
 use log::info;
 use rusqlite::{params, Connection, Result as SqliteResult};
 use std::path::Path;
