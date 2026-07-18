@@ -72,14 +72,15 @@ impl Database {
 impl Database {
     #[allow(dead_code)]
     pub fn upsert_file(&self, file: &FileEntry) -> SqliteResult<i64> {
-        self.conn.execute(
+        self.conn.query_row(
             "INSERT INTO files (path_id, file_path, file_name, file_ext, thumbnail_path, file_size, modified_at, rating, has_custom_thumb)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(path_id, file_path) DO UPDATE SET
                 file_name = excluded.file_name,
                 thumbnail_path = COALESCE(excluded.thumbnail_path, files.thumbnail_path),
                 file_size = excluded.file_size,
-                modified_at = excluded.modified_at",
+                modified_at = excluded.modified_at
+             RETURNING id",
             params![
                 file.path_id,
                 file.file_path,
@@ -91,8 +92,8 @@ impl Database {
                 file.rating,
                 file.has_custom_thumb,
             ],
-        )?;
-        Ok(self.conn.last_insert_rowid())
+            |row| row.get(0),
+        )
     }
 
     pub fn upsert_files_batch(&self, files: &[FileEntry]) -> SqliteResult<()> {
@@ -547,6 +548,22 @@ mod tests {
         let files = db.get_files_for_path(path_id).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].file_size, 200);
+    }
+
+    #[test]
+    fn test_upsert_file_returns_same_id_on_update() {
+        let db = test_db();
+        let path_id = db.add_path("/videos", "V").unwrap();
+
+        let mut file = test_file(path_id, "/videos/a.mp4");
+        let id1 = db.upsert_file(&file).unwrap();
+
+        // Insert a different file so last_insert_rowid() moves past id1.
+        db.upsert_file(&test_file(path_id, "/videos/b.mp4")).unwrap();
+
+        file.file_size = 999;
+        let id2 = db.upsert_file(&file).unwrap();
+        assert_eq!(id1, id2);
     }
 
     #[test]
