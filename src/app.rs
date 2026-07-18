@@ -264,6 +264,15 @@ impl App {
         }
     }
 
+    /// True while a scan, thumbnail generation, or thumbnail cleanup is running.
+    /// Deliberately excludes `loading_files`: a background file load is
+    /// read-only and must not block starting new work.
+    pub fn is_background_busy(&self) -> bool {
+        self.scanning
+            || self.thumbnail_progress.is_some()
+            || self.clean_thumbs_rx.is_some()
+    }
+
     pub fn play_video_file(&self, file_path: &str) {
         let player = self.db.safe_lock().get_setting("default_player")
             .ok().flatten().unwrap_or_default();

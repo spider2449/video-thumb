@@ -27,21 +27,21 @@ impl MainWindow {
                         app.reset_add_path_dialog();
                     }
 
-                    let scan_text = if app.scanning {
+                    let busy = app.is_background_busy();
+                    let scan_text = if busy {
                         crate::lang::t(lang, "scanning").to_string()
                     } else {
                         crate::lang::t(lang, "update_db").to_string()
                     };
 
-                    ui.add_enabled_ui(!app.scanning, |ui| {
+                    ui.add_enabled_ui(!busy, |ui| {
                         if ui.button(&scan_text).clicked() {
                             Self::start_scan(app);
                         }
+                        if ui.button(crate::lang::t(lang, "rescan_thumbs")).clicked() {
+                            Self::clean_unused_thumbnails(app);
+                        }
                     });
-
-                    if ui.button(crate::lang::t(lang, "rescan_thumbs")).clicked() {
-                        Self::clean_unused_thumbnails(app);
-                    }
 
                     ui.separator();
 
