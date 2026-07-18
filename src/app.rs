@@ -530,7 +530,7 @@ impl App {
             match rx.try_recv() {
                 Ok(path_id) => {
                     self.thumbnail_progress = None;
-                    self.scan_status = format!("{}{}{}", crate::lang::t(self.lang, "done_found_prefix"), self.files.get(&path_id).map(|f| f.len()).unwrap_or(0), crate::lang::t(self.lang, "done_found_suffix"));
+                    self.scan_status = crate::lang::t(self.lang, "thumbs_done").to_string();
                     self.load_files_for_path(path_id);
                     ctx.request_repaint();
                 }

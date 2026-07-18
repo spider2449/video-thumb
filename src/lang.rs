@@ -126,6 +126,7 @@ static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<Lang, &'static str>>> = 
     m.insert("query_failed_prefix", [(Lang::ZhTw, "查詢失敗: "), (Lang::En, "Query failed: ")].into_iter().collect());
     m.insert("generating_thumbs_prefix", [(Lang::ZhTw, "生成縮圖中... "), (Lang::En, "Generating thumbnails... ")].into_iter().collect());
     m.insert("generating_thumbs_sep", [(Lang::ZhTw, "/"), (Lang::En, "/")].into_iter().collect());
+    m.insert("thumbs_done", [(Lang::ZhTw, "縮圖生成完成"), (Lang::En, "Thumbnail generation complete")].into_iter().collect());
     m.insert("done_found_prefix", [(Lang::ZhTw, "完成！找到 "), (Lang::En, "Done! Found ")].into_iter().collect());
     m.insert("done_found_suffix", [(Lang::ZhTw, " 個檔案"), (Lang::En, " files")].into_iter().collect());
     m.insert("failed_prefix", [(Lang::ZhTw, "失敗: "), (Lang::En, "Failed: ")].into_iter().collect());
