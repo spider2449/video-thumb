@@ -1,7 +1,6 @@
 use crate::db::{Database, FileEntry, SafeMutexExt};
 use chrono::{DateTime, Utc};
 use log::{error, info};
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -42,55 +41,44 @@ impl Scanner {
         .await
         .map_err(|e| format!("task join error: {e}"))?;
 
-        // Insert files into database first (so we have file_ids for thumbnail lookup)
-        let mut count = 0;
-        let mut files_needing_thumbnails = Vec::new();
-
-        let db_files;
-        {
-            let db = self.db.safe_lock();
-            if let Err(e) = db.begin_transaction() {
-                error!("Failed to begin transaction: {:?}", e);
-            }
-
-            if let Err(e) = db.upsert_files_batch(&files) {
-                error!("Failed to batch insert files: {:?}", e);
-            } else {
-                count = files.len();
-            }
-
-            if scan_completed && !files.is_empty() {
-                let found_paths: HashSet<String> = files.iter()
-                    .map(|f| f.file_path.clone())
-                    .collect();
-                if let Ok(existing_files) = db.get_files_for_path(path_id) {
-                    let mut deleted = 0;
-                    for existing in &existing_files {
-                        if !found_paths.contains(&existing.file_path) {
-                            if let Err(e) = db.delete_file(existing.id) {
-                                error!("Failed to delete stale record for {}: {:?}", existing.file_path, e);
-                            } else {
-                                deleted += 1;
-                            }
-                        }
-                    }
-                    if deleted > 0 {
-                        info!("Deleted {} stale records for files no longer on disk", deleted);
-                    }
-                }
-            } else if !scan_completed {
-                info!("Scan was cancelled; skipping stale-record cleanup to avoid data loss");
-            }
-
-            if let Err(e) = db.commit_transaction() {
-                error!("Failed to commit transaction: {:?}", e);
-            }
-
-            db_files = db.get_files_for_path(path_id).unwrap_or_default();
+        // Sync scanned files into the database in one transaction.
+        // Skip stale-record deletion when the scan was cancelled or found
+        // nothing, to avoid treating unscanned files as deleted.
+        let delete_stale = scan_completed && !files.is_empty();
+        let (stats, db_files) = {
+            let mut db = self.db.safe_lock();
+            let stats = db
+                .sync_files_for_path(path_id, &files, delete_stale)
+                .map_err(|e| format!("Database sync failed: {e}"))?;
+            let db_files = db.get_files_for_path(path_id).unwrap_or_default();
+            (stats, db_files)
+        };
+        let count = stats.upserted;
+        if stats.stale_deleted > 0 {
+            info!("Deleted {} stale records for files no longer on disk", stats.stale_deleted);
+        }
+        if !delete_stale && !scan_completed {
+            info!("Scan was cancelled; skipped stale-record cleanup to avoid data loss");
         }
 
-        // Now check thumbnail existence using file_ids from DB (lock released)
+        // Remove thumbnail files orphaned by the stale-record deletion (lock released).
         let data_dir = crate::utils::get_data_dir();
+        let thumbs_dir = data_dir.join("thumbs");
+        for filename in &stats.orphan_thumb_files {
+            if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+                error!("Invalid thumbnail filename from DB, not deleting: {}", filename);
+                continue;
+            }
+            let path = thumbs_dir.join(filename);
+            if path.exists() {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    error!("Failed to delete orphan thumbnail {}: {}", filename, e);
+                }
+            }
+        }
+
+        // Check thumbnail existence using file_ids from the DB.
+        let mut files_needing_thumbnails = Vec::new();
         let gen = crate::thumbnail::ThumbnailGenerator::new(&data_dir, &PathBuf::from(""), self.db.clone());
 
         let path_to_id: std::collections::HashMap<String, i64> = db_files.iter()

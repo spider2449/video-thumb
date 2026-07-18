@@ -62,16 +62,6 @@ impl Database {
         Ok(db)
     }
 
-    pub fn begin_transaction(&self) -> SqliteResult<()> {
-        self.conn.execute_batch("BEGIN")?;
-        Ok(())
-    }
-
-    pub fn commit_transaction(&self) -> SqliteResult<()> {
-        self.conn.execute_batch("COMMIT")?;
-        Ok(())
-    }
-
     fn init_schema(&self) -> SqliteResult<()> {
         info!("Creating database schema");
         self.conn.execute_batch(
