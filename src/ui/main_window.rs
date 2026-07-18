@@ -583,6 +583,10 @@ impl MainWindow {
                     Err(_) => continue,
                 };
                 let filename = entry.file_name().to_string_lossy().to_string();
+                // Only ever delete thumbnail images; leave any other file alone.
+                if !filename.to_lowercase().ends_with(".jpg") {
+                    continue;
+                }
                 if !referenced.contains(&filename)
                     && std::fs::remove_file(entry.path()).is_ok() {
                         deleted += 1;
