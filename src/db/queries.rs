@@ -156,6 +156,7 @@ impl Database {
         )
     }
 
+    #[allow(dead_code)]
     pub fn upsert_files_batch(&self, files: &[FileEntry]) -> SqliteResult<()> {
         upsert_files_chunked(&self.conn, files)
     }

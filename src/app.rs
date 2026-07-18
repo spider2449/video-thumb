@@ -8,11 +8,19 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
+/// Cache entry for the current filtered+sorted view:
+/// (path_id, sort, search query, rating filter, tag filter, result).
+pub type FilterCacheEntry = (i64, SortBy, String, Option<i32>, Option<i64>, Arc<Vec<FileEntry>>);
+
+/// Payload sent by the background file-load thread:
+/// (path_id, files, file_id -> tag_ids map).
+pub type FilesLoadMsg = (i64, Vec<FileEntry>, HashMap<i64, Vec<i64>>);
+
 pub struct App {
     pub db: Arc<Mutex<Database>>,
     pub watched_paths: Vec<WatchedPath>,
     pub files: HashMap<i64, Arc<Vec<FileEntry>>>,
-    pub filter_cache: Option<(i64, SortBy, String, Option<i32>, Option<i64>, Arc<Vec<FileEntry>>)>,
+    pub filter_cache: Option<FilterCacheEntry>,
     pub file_tag_map: HashMap<i64, Vec<i64>>, // file_id -> tag_ids
     pub tags: Vec<crate::db::Tag>,
     pub current_path_id: Option<i64>,
@@ -33,7 +41,7 @@ pub struct App {
     pub thumbnail_progress: Option<(usize, usize)>,
     pub thumb_progress_rx: Option<std::sync::mpsc::Receiver<usize>>,
     pub thumb_done_rx: Option<std::sync::mpsc::Receiver<i64>>,
-    pub files_load_rx: Option<std::sync::mpsc::Receiver<(i64, Vec<crate::db::FileEntry>, std::collections::HashMap<i64, Vec<i64>>)>>,
+    pub files_load_rx: Option<std::sync::mpsc::Receiver<FilesLoadMsg>>,
     pub clean_thumbs_rx: Option<std::sync::mpsc::Receiver<String>>,
     // Dialog state
     pub add_path_path: String,
@@ -238,8 +246,8 @@ impl App {
 
         match self.sort_by {
             SortBy::Name => files.sort_by(|a, b| a.file_path.cmp(&b.file_path)),
-            SortBy::Date => files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at)),
-            SortBy::Rating => files.sort_by(|a, b| b.rating.cmp(&a.rating)),
+            SortBy::Date => files.sort_by_key(|f| std::cmp::Reverse(f.modified_at)),
+            SortBy::Rating => files.sort_by_key(|f| std::cmp::Reverse(f.rating)),
         }
 
         let result = Arc::new(files);

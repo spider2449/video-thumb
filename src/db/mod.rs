@@ -1,6 +1,7 @@
 mod models;
 mod queries;
 
+#[allow(unused_imports)]
 pub use queries::SyncStats;
 
 use log::info;
