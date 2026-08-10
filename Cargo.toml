@@ -4,6 +4,7 @@ version = "0.1.7"
 edition = "2021"
 description = "A video thumbnail viewer with SQLite storage"
 authors = ["You"]
+license = "MIT"
 
 [dependencies]
 # GUI framework
