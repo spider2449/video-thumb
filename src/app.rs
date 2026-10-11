@@ -9,8 +9,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 /// Cache entry for the current filtered+sorted view:
-/// (path_id, sort, search query, rating filter, tag filter, result).
-pub type FilterCacheEntry = (i64, SortBy, String, Option<i32>, Option<i64>, Arc<Vec<FileEntry>>);
+/// (path_id, (sort, descending), search query, rating filter, tag filter, result).
+pub type FilterCacheEntry = (i64, (SortBy, bool), String, Option<i32>, Option<i64>, Arc<Vec<FileEntry>>);
 
 /// Payload sent by the background file-load thread:
 /// (path_id, files, file_id -> tag_ids map).
@@ -26,10 +26,12 @@ pub struct App {
     pub current_path_id: Option<i64>,
     pub selected_file_id: Option<i64>,
     pub thumbnail_size: f32,
+    pub view_mode: ViewMode,
     pub search_query: String,
     pub rating_filter: Option<i32>,
     pub tag_filter: Option<i64>,
     pub sort_by: SortBy,
+    pub sort_desc: bool,
     pub show_settings: bool,
     pub show_add_path: bool,
     pub show_tag_manager: bool,
@@ -81,6 +83,29 @@ pub struct ScanResult {
     pub files_needing_thumbnails: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewMode {
+    #[default]
+    Thumbnails,
+    Details,
+}
+
+impl ViewMode {
+    pub fn as_setting(self) -> &'static str {
+        match self {
+            ViewMode::Thumbnails => "thumbnails",
+            ViewMode::Details => "details",
+        }
+    }
+
+    pub fn from_setting(s: &str) -> Self {
+        match s {
+            "details" => ViewMode::Details,
+            _ => ViewMode::Thumbnails,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(Default)]
 pub enum SortBy {
@@ -88,6 +113,14 @@ pub enum SortBy {
     Name,
     Date,
     Rating,
+    Size,
+}
+
+impl SortBy {
+    /// Initial direction when switching to this column (like Explorer: name A→Z, others largest/newest first).
+    pub fn default_desc(self) -> bool {
+        !matches!(self, SortBy::Name)
+    }
 }
 
 
@@ -116,10 +149,12 @@ impl App {
             current_path_id: None,
             selected_file_id: None,
             thumbnail_size: 200.0,
+            view_mode: ViewMode::Thumbnails,
             search_query: String::new(),
             rating_filter: None,
             tag_filter: None,
             sort_by: SortBy::Name,
+            sort_desc: false,
             show_settings: false,
             show_add_path: false,
             show_tag_manager: false,
@@ -203,7 +238,7 @@ impl App {
         // Check filter cache
         if let Some(ref cache) = self.filter_cache {
             if cache.0 == path_id
-                && cache.1 == self.sort_by
+                && cache.1 == (self.sort_by, self.sort_desc)
                 && cache.2 == self.search_query
                 && cache.3 == self.rating_filter
                 && cache.4 == self.tag_filter
@@ -244,19 +279,40 @@ impl App {
             });
         }
 
-        match self.sort_by {
-            SortBy::Name => files.sort_by(|a, b| a.file_path.cmp(&b.file_path)),
-            SortBy::Date => files.sort_by_key(|f| std::cmp::Reverse(f.modified_at)),
-            SortBy::Rating => files.sort_by_key(|f| std::cmp::Reverse(f.rating)),
-        }
+        // Name sorts by full path (what both views display); it is also the
+        // tiebreaker so equal keys keep a stable, predictable order
+        let by_name = |a: &FileEntry, b: &FileEntry| {
+            a.file_path.to_lowercase().cmp(&b.file_path.to_lowercase())
+                .then_with(|| a.file_path.cmp(&b.file_path))
+        };
+        files.sort_by(|a, b| {
+            let ord = match self.sort_by {
+                SortBy::Name => by_name(a, b),
+                SortBy::Date => a.modified_at.cmp(&b.modified_at).then_with(|| by_name(a, b)),
+                SortBy::Rating => a.rating.cmp(&b.rating).then_with(|| by_name(a, b)),
+                SortBy::Size => a.file_size.cmp(&b.file_size).then_with(|| by_name(a, b)),
+            };
+            if self.sort_desc { ord.reverse() } else { ord }
+        });
 
         let result = Arc::new(files);
-        self.filter_cache = Some((path_id, self.sort_by, self.search_query.clone(), self.rating_filter, self.tag_filter, Arc::clone(&result)));
+        self.filter_cache = Some((path_id, (self.sort_by, self.sort_desc), self.search_query.clone(), self.rating_filter, self.tag_filter, Arc::clone(&result)));
         result
     }
 
     pub fn clear_texture_cache(&mut self) {
         self.texture_cache.clear();
+    }
+
+    /// Select a sort column; selecting the current column again flips the direction.
+    pub fn set_sort(&mut self, sort: SortBy) {
+        if self.sort_by == sort {
+            self.sort_desc = !self.sort_desc;
+        } else {
+            self.sort_by = sort;
+            self.sort_desc = sort.default_desc();
+        }
+        self.invalidate_cache();
     }
 
     pub fn invalidate_cache(&mut self) {
@@ -471,6 +527,9 @@ impl App {
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| "dark".to_string());
+            self.view_mode = ViewMode::from_setting(
+                &db_guard.get_setting("view_mode").ok().flatten().unwrap_or_default()
+            );
             drop(db_guard);
             self.apply_theme(ctx);
             self.theme_loaded = true;
@@ -607,8 +666,13 @@ impl App {
             }
             let current_files = self.get_current_files();
             if let Some(selected_idx) = current_files.iter().position(|f| f.id == selected_id) {
-                let screen_width = ctx.input(|i| i.screen_rect.width());
-                let items_per_row = ((screen_width - 40.0) / self.thumbnail_size).max(1.0) as usize;
+                let items_per_row = match self.view_mode {
+                    ViewMode::Thumbnails => {
+                        let screen_width = ctx.input(|i| i.screen_rect.width());
+                        ((screen_width - 40.0) / self.thumbnail_size).max(1.0) as usize
+                    }
+                    ViewMode::Details => 1,
+                };
 
                 let new_idx = if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
                     Some(selected_idx.saturating_add(1).min(current_files.len().saturating_sub(1)))

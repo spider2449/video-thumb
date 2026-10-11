@@ -53,6 +53,9 @@ static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<Lang, &'static str>>> = 
     m.insert("tag_manager", [(Lang::ZhTw, "🏷️ 標籤管理"), (Lang::En, "🏷️ Tag Manager")].into_iter().collect());
     m.insert("size", [(Lang::ZhTw, "大小"), (Lang::En, "Size")].into_iter().collect());
     m.insert("settings", [(Lang::ZhTw, "⚙️ 設定"), (Lang::En, "⚙️ Settings")].into_iter().collect());
+    m.insert("view_thumbnails", [(Lang::ZhTw, "縮圖"), (Lang::En, "Thumbnails")].into_iter().collect());
+    m.insert("view_details", [(Lang::ZhTw, "詳細資料"), (Lang::En, "Details")].into_iter().collect());
+    m.insert("file_size", [(Lang::ZhTw, "檔案大小"), (Lang::En, "File Size")].into_iter().collect());
     m.insert("confirm_remove_path", [(Lang::ZhTw, "確認移除路徑"), (Lang::En, "Confirm Remove Path")].into_iter().collect());
     m.insert("confirm_remove_prefix", [(Lang::ZhTw, "確定要移除「"), (Lang::En, "Are you sure you want to remove \"")].into_iter().collect());
     m.insert("confirm_remove_suffix", [(Lang::ZhTw, "」嗎？"), (Lang::En, "\"?")].into_iter().collect());

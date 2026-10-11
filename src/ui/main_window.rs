@@ -1,4 +1,4 @@
-use crate::app::SortBy;
+use crate::app::{SortBy, ViewMode};
 use crate::db::SafeMutexExt;
 use crate::App;
 use crate::scanner::Scanner;
@@ -46,20 +46,17 @@ impl MainWindow {
                     ui.separator();
 
                     ui.menu_button(crate::lang::t(lang, "sort"), |ui| {
-                        if ui.selectable_label(app.sort_by == SortBy::Name, crate::lang::t(lang, "name")).clicked() {
-                            app.sort_by = SortBy::Name;
-                            app.invalidate_cache();
-                            ui.close_menu();
-                        }
-                        if ui.selectable_label(app.sort_by == SortBy::Date, crate::lang::t(lang, "date")).clicked() {
-                            app.sort_by = SortBy::Date;
-                            app.invalidate_cache();
-                            ui.close_menu();
-                        }
-                        if ui.selectable_label(app.sort_by == SortBy::Rating, crate::lang::t(lang, "rating")).clicked() {
-                            app.sort_by = SortBy::Rating;
-                            app.invalidate_cache();
-                            ui.close_menu();
+                        for (sort, key) in Self::SORT_COLUMNS {
+                            let selected = app.sort_by == sort;
+                            let label = if selected {
+                                format!("{} {}", crate::lang::t(lang, key), Self::sort_arrow(app.sort_desc))
+                            } else {
+                                crate::lang::t(lang, key).to_string()
+                            };
+                            if ui.selectable_label(selected, label).clicked() {
+                                app.set_sort(sort);
+                                ui.close_menu();
+                            }
                         }
                     });
 
@@ -128,7 +125,23 @@ impl MainWindow {
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text(crate::lang::t(lang, "size")));
+                        if app.view_mode == ViewMode::Thumbnails {
+                            ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text(crate::lang::t(lang, "size")));
+                            ui.separator();
+                        }
+
+                        // Right-to-left layout: add in reverse visual order
+                        let mut new_mode = app.view_mode;
+                        ui.selectable_value(&mut new_mode, ViewMode::Details, format!("☰ {}", crate::lang::t(lang, "view_details")));
+                        ui.selectable_value(&mut new_mode, ViewMode::Thumbnails, format!("⊞ {}", crate::lang::t(lang, "view_thumbnails")));
+                        if new_mode != app.view_mode {
+                            app.view_mode = new_mode;
+                            if let Some(id) = app.selected_file_id {
+                                app.scroll_to_idx = app.get_current_files().iter().position(|f| f.id == id);
+                            }
+                            let db = app.db.safe_lock();
+                            let _ = db.set_setting("view_mode", app.view_mode.as_setting());
+                        }
                         ui.separator();
 
                         let theme_icon = if app.current_theme == "light" { "☽" } else { "☀" };
@@ -195,6 +208,11 @@ impl MainWindow {
             .show(ctx, |ui| {
                 let files = app.get_current_files();
                 let scroll_target = app.scroll_to_idx.take();
+
+                if app.view_mode == ViewMode::Details {
+                    Self::show_details_view(ui, ctx, app, &files, scroll_target);
+                    return;
+                }
 
                 let available_width = ctx.input(|i| i.screen_rect.width()) - 40.0;
                 let item_width = app.thumbnail_size;
@@ -485,29 +503,7 @@ impl MainWindow {
                     );
                 }
 
-                if thumb_rect.double_clicked() {
-                    app.play_video_file(&file.file_path);
-                }
-
-                if thumb_rect.clicked() && !thumb_rect.double_clicked() {
-                    app.selected_file_id = Some(file.id);
-                }
-
-                if thumb_rect.secondary_clicked() {
-                    if app.context_menu.is_none() {
-                        let mut menu = crate::ui::ContextMenu::new();
-                        menu.file = Some(file.clone());
-                        menu.click_pos = thumb_rect.interact_pointer_pos()
-                            .unwrap_or(thumb_rect.rect.min);
-                        app.context_menu = Some(menu);
-                    } else {
-                        if let Some(ref mut menu) = app.context_menu {
-                            menu.file = Some(file.clone());
-                            menu.click_pos = thumb_rect.interact_pointer_pos()
-                                .unwrap_or(thumb_rect.rect.min);
-                        }
-                    }
-                }
+                Self::handle_item_response(app, file, &thumb_rect);
 
                 ui.label(egui::RichText::new(&file.file_path).size(10.0).color(egui::Color32::LIGHT_GRAY));
 
@@ -519,6 +515,174 @@ impl MainWindow {
                 });
             });
         });
+    }
+
+    /// Selection, double-click to play and right-click context menu, shared by both view modes.
+    fn handle_item_response(app: &mut App, file: &crate::db::FileEntry, response: &egui::Response) {
+        if response.double_clicked() {
+            app.play_video_file(&file.file_path);
+        }
+
+        if response.clicked() && !response.double_clicked() {
+            app.selected_file_id = Some(file.id);
+        }
+
+        if response.secondary_clicked() {
+            app.selected_file_id = Some(file.id);
+            let click_pos = response.interact_pointer_pos().unwrap_or(response.rect.min);
+            let menu = app.context_menu.get_or_insert_with(crate::ui::ContextMenu::new);
+            menu.file = Some(file.clone());
+            menu.click_pos = click_pos;
+        }
+    }
+
+    /// Explorer-style "Details" view: one row per file with small icon, name, size, date and rating.
+    fn show_details_view(
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        app: &mut App,
+        files: &[crate::db::FileEntry],
+        scroll_target: Option<usize>,
+    ) {
+        const ROW_HEIGHT: f32 = 28.0;
+        const ICON_W: f32 = 44.0;
+        const SIZE_W: f32 = 90.0;
+        const DATE_W: f32 = 140.0;
+        const RATING_W: f32 = 90.0;
+        const PAD: f32 = 6.0;
+
+        let lang = app.lang;
+        let font = egui::FontId::proportional(13.0);
+        let text_color = ui.visuals().text_color();
+        let weak_color = ui.visuals().weak_text_color();
+
+        // Column x-offsets relative to row left; name column takes the remaining width
+        let columns = |rect: egui::Rect| {
+            let name_x = rect.min.x + ICON_W + PAD;
+            let rating_x = rect.max.x - RATING_W;
+            let date_x = rating_x - DATE_W;
+            let size_x = date_x - SIZE_W;
+            (name_x, size_x, date_x, rating_x)
+        };
+
+        // Header: click a column to sort, click again to flip direction
+        let (_, header_rect) = ui.allocate_space(egui::vec2(ui.available_width(), ROW_HEIGHT));
+        let (name_x, size_x, date_x, rating_x) = columns(header_rect);
+        let header_cols = [
+            (name_x, size_x - name_x, SortBy::Name, "name"),
+            (size_x, SIZE_W, SortBy::Size, "file_size"),
+            (date_x, DATE_W, SortBy::Date, "date"),
+            (rating_x, RATING_W, SortBy::Rating, "rating"),
+        ];
+        for (x, w, sort, key) in header_cols {
+            let rect = egui::Rect::from_min_size(egui::pos2(x, header_rect.min.y), egui::vec2(w.max(0.0), ROW_HEIGHT));
+            let resp = ui.interact(rect, egui::Id::new(("details_header", key)), egui::Sense::click());
+            if resp.hovered() {
+                ui.painter().rect_filled(rect, 0.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let mut label = crate::lang::t(lang, key).to_string();
+            if app.sort_by == sort {
+                label.push(' ');
+                label.push_str(Self::sort_arrow(app.sort_desc));
+            }
+            ui.painter().with_clip_rect(rect).text(
+                egui::pos2(rect.min.x + PAD, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                label,
+                font.clone(),
+                if app.sort_by == sort { text_color } else { weak_color },
+            );
+            if resp.clicked() {
+                app.set_sort(sort);
+            }
+        }
+        ui.painter().hline(header_rect.x_range(), header_rect.max.y, ui.visuals().widgets.noninteractive.bg_stroke);
+
+        let total_rows = files.len();
+        let mut scroll_area = egui::ScrollArea::vertical()
+            .id_salt(egui::Id::new("file_details_scroll_area"))
+            .auto_shrink([false; 2]);
+
+        if let Some(idx) = scroll_target {
+            scroll_area = scroll_area.vertical_scroll_offset(idx as f32 * ROW_HEIGHT);
+        }
+
+        scroll_area.show_rows(ui, ROW_HEIGHT, total_rows, |ui, range| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for file in &files[range] {
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW_HEIGHT), egui::Sense::click_and_drag());
+                let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+
+                let is_selected = app.selected_file_id == Some(file.id);
+                if is_selected {
+                    painter.rect_filled(rect, 2.0, ui.visuals().selection.bg_fill);
+                } else if resp.hovered() {
+                    painter.rect_filled(rect, 2.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                }
+
+                // Small thumbnail icon (fit, centered)
+                let icon_rect = egui::Rect::from_min_size(rect.min + egui::vec2(2.0, 2.0), egui::vec2(ICON_W - 4.0, ROW_HEIGHT - 4.0));
+                let tex = file.thumbnail_path.as_ref()
+                    .map(std::path::PathBuf::from)
+                    .filter(|p| p.exists())
+                    .and_then(|p| Self::load_tex(ctx, app, &p));
+                if let Some(tex) = tex {
+                    let tex_size = tex.size_vec2();
+                    let scale = (icon_rect.width() / tex_size.x).min(icon_rect.height() / tex_size.y);
+                    let img_rect = egui::Rect::from_center_size(icon_rect.center(), tex_size * scale);
+                    painter.image(tex.id(), img_rect, egui::Rect::from_min_max([0.0, 0.0].into(), [1.0, 1.0].into()), egui::Color32::WHITE);
+                } else {
+                    painter.rect_filled(icon_rect, 0.0, egui::Color32::from_gray(50));
+                    painter.text(icon_rect.center(), egui::Align2::CENTER_CENTER, "🎬", egui::FontId::proportional(12.0), egui::Color32::GRAY);
+                }
+                if file.has_custom_thumb {
+                    painter.rect_filled(egui::Rect::from_min_size(icon_rect.min, [6.0, 6.0].into()), 0.0, egui::Color32::from_rgba_unmultiplied(255, 200, 0, 200));
+                }
+
+                let (name_x, size_x, date_x, rating_x) = columns(rect);
+                let y = rect.center().y;
+                let clip = ui.clip_rect();
+                let cell = |x0: f32, x1: f32| egui::Rect::from_x_y_ranges(x0..=x1 - PAD, rect.y_range()).intersect(clip);
+
+                painter.with_clip_rect(cell(name_x, size_x)).text(egui::pos2(name_x, y), egui::Align2::LEFT_CENTER, &file.file_path,font.clone(), text_color);
+                painter.with_clip_rect(cell(size_x, date_x)).text(egui::pos2(date_x - PAD * 2.0, y), egui::Align2::RIGHT_CENTER, Self::format_file_size(file.file_size), font.clone(), weak_color);
+                let date = file.modified_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string();
+                painter.with_clip_rect(cell(date_x, rating_x)).text(egui::pos2(date_x + PAD, y), egui::Align2::LEFT_CENTER, date, font.clone(), weak_color);
+                let stars: String = (1..=5).map(|s| if s <= file.rating { '★' } else { '☆' }).collect();
+                let star_color = if file.rating > 0 { egui::Color32::from_rgb(255, 200, 0) } else { egui::Color32::from_gray(80) };
+                painter.with_clip_rect(cell(rating_x, rect.max.x + PAD)).text(egui::pos2(rating_x + PAD, y), egui::Align2::LEFT_CENTER, stars, font.clone(), star_color);
+
+                let resp = resp.on_hover_text_at_pointer(&file.file_path);
+                Self::handle_item_response(app, file, &resp);
+            }
+        });
+    }
+
+    const SORT_COLUMNS: [(SortBy, &'static str); 4] = [
+        (SortBy::Name, "name"),
+        (SortBy::Date, "date"),
+        (SortBy::Rating, "rating"),
+        (SortBy::Size, "file_size"),
+    ];
+
+    fn sort_arrow(desc: bool) -> &'static str {
+        if desc { "▼" } else { "▲" }
+    }
+
+    fn format_file_size(bytes: i64) -> String {
+        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+        let mut size = bytes.max(0) as f64;
+        let mut unit = 0;
+        while size >= 1024.0 && unit < UNITS.len() - 1 {
+            size /= 1024.0;
+            unit += 1;
+        }
+        if unit == 0 {
+            format!("{} {}", bytes, UNITS[0])
+        } else {
+            format!("{:.1} {}", size, UNITS[unit])
+        }
     }
 
     fn load_tex(ctx: &egui::Context, app: &mut App, path: &std::path::PathBuf) -> Option<egui::TextureHandle> {
