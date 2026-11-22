@@ -173,7 +173,7 @@ impl App {
             remove_path_confirm: None,
             console_visible: true,
             cache_invalidated: false,
-            current_theme: "dark".to_string(),
+            current_theme: crate::ui::theme::PLATINUM_SETTING.to_owned(),
             theme_loaded: false,
             thumbnail_progress: None,
             thumb_progress_rx: None,
@@ -447,13 +447,7 @@ impl App {
     }
 
     pub fn apply_theme(&self, ctx: &egui::Context) {
-        let theme = if self.current_theme == "light" {
-            egui::Theme::Light
-        } else {
-            egui::Theme::Dark
-        };
-        ctx.set_visuals_of(theme, crate::ui::theme::visuals(theme));
-        ctx.set_theme(theme);
+        crate::ui::theme::apply(ctx, &self.current_theme);
     }
 
     pub fn start_thumbnail_generation(&mut self, files: Vec<String>, path_id: i64) {
@@ -525,10 +519,9 @@ impl App {
         // Load and apply theme on first frame
         if !self.theme_loaded {
             let db_guard = self.db.safe_lock();
-            self.current_theme = db_guard.get_setting("theme")
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "dark".to_string());
+            self.current_theme = crate::ui::theme::startup_setting(
+                db_guard.get_setting("theme").ok().flatten(),
+            );
             self.view_mode = ViewMode::from_setting(
                 &db_guard.get_setting("view_mode").ok().flatten().unwrap_or_default()
             );

@@ -1,4 +1,5 @@
 use super::icons::{self, Icon};
+use super::theme::PLATINUM_SETTING;
 use crate::app::{SortBy, ViewMode};
 use crate::db::SafeMutexExt;
 use crate::App;
@@ -19,6 +20,10 @@ impl MainWindow {
 
     pub fn show_main(ctx: &egui::Context, app: &mut App) -> usize {
         let lang = app.lang;
+        if app.current_theme == PLATINUM_SETTING {
+            super::theme::platinum_title_bar(ctx, lang);
+            super::theme::platinum_window_resize(ctx);
+        }
 
         // Toolbar
         egui::TopBottomPanel::top("toolbar")
@@ -145,17 +150,30 @@ impl MainWindow {
                             app.show_tag_manager = true;
                         }
 
-                        let theme_icon = if app.current_theme == "light" { Icon::Moon } else { Icon::Sun };
-                        if ui.add(theme_icon.button(ui)).on_hover_text(crate::lang::t(lang, "toggle_theme")).clicked() {
-                            app.current_theme = if app.current_theme == "light" {
-                                "dark".to_string()
-                            } else {
-                                "light".to_string()
-                            };
-                            app.apply_theme(ctx);
-                            let db = app.db.safe_lock();
-                            let _ = db.set_setting("theme", &app.current_theme);
-                        }
+                        let theme_icon = if app.current_theme == "dark" { Icon::Moon } else { Icon::Sun };
+                        let theme_key = match app.current_theme.as_str() {
+                            PLATINUM_SETTING => "theme_platinum",
+                            "light" => "theme_light",
+                            _ => "theme_dark",
+                        };
+                        let theme_button = theme_icon.labeled(ui, crate::lang::t(lang, theme_key));
+                        egui::menu::menu_custom_button(ui, theme_button, |ui| {
+                            for (setting, key) in [
+                                ("light", "theme_light"),
+                                ("dark", "theme_dark"),
+                                (PLATINUM_SETTING, "theme_platinum"),
+                            ] {
+                                if ui.selectable_label(app.current_theme == setting, crate::lang::t(lang, key)).clicked() {
+                                    app.current_theme = setting.to_owned();
+                                    app.apply_theme(ctx);
+                                    let db = app.db.safe_lock();
+                                    let _ = db.set_setting("theme", setting);
+                                    ui.close_menu();
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text(crate::lang::t(lang, "toggle_theme"));
 
                         let (new_mode, view_icon, view_hint) = match app.view_mode {
                             ViewMode::Thumbnails => (ViewMode::Details, Icon::List, "switch_to_details"),
@@ -213,9 +231,38 @@ impl MainWindow {
                 });
             });
 
-        // Main content
-        let items_per_row = egui::CentralPanel::default()
+        // Status bar
+        egui::TopBottomPanel::bottom("status_bar")
             .show(ctx, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let file_count = app.current_path_id
+                        .and_then(|id| app.files.get(&id))
+                        .map(|files| files.len())
+                        .unwrap_or(0);
+                    ui.label(format!("{}{}{}", crate::lang::t(lang, "file_count_prefix"), file_count, crate::lang::t(lang, "file_count_suffix")));
+                    if app.scanning {
+                        ui.label(format!(" | {}", app.scan_status));
+                    }
+                    if let Some(path_id) = app.current_path_id {
+                        if let Some(path) = app.watched_paths.iter().find(|p| p.id == path_id) {
+                            ui.label(format!(" | {}", path.path));
+                        }
+                    }
+                });
+            });
+
+        // Main content
+        let platinum = app.current_theme == PLATINUM_SETTING;
+        let mut panel = egui::CentralPanel::default();
+        if platinum {
+            panel = panel.frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill));
+        }
+        let items_per_row = panel.show(ctx, |ui| {
+            let title = platinum.then(|| app.watched_paths.iter()
+                .find(|path| Some(path.id) == app.current_path_id)
+                .map(|path| path.display_name.clone())
+                .unwrap_or_else(|| crate::lang::t(lang, "app_name").to_owned()));
+            let mut content = |ui: &mut egui::Ui| {
                 let files = app.get_current_files();
                 let scroll_target = app.scroll_to_idx.take();
 
@@ -263,8 +310,13 @@ impl MainWindow {
                 });
 
                 items_per_row
-            })
-            .inner;
+            };
+            if let Some(title) = title {
+                super::theme::platinum_browser(ui, &title, content)
+            } else {
+                content(ui)
+            }
+        }).inner;
 
     // Context menu overlay (rendered on top)
     {
@@ -325,26 +377,6 @@ impl MainWindow {
             app.remove_path_confirm = Some((path_id, display_name));
         }
     }
-
-    // Status bar
-        egui::TopBottomPanel::bottom("status_bar")
-            .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    let file_count = app.current_path_id
-                        .and_then(|id| app.files.get(&id))
-                        .map(|files| files.len())
-                        .unwrap_or(0);
-                    ui.label(format!("{}{}{}", crate::lang::t(lang, "file_count_prefix"), file_count, crate::lang::t(lang, "file_count_suffix")));
-                    if app.scanning {
-                        ui.label(format!(" | {}", app.scan_status));
-                    }
-                    if let Some(path_id) = app.current_path_id {
-                        if let Some(path) = app.watched_paths.iter().find(|p| p.id == path_id) {
-                            ui.label(format!(" | {}", path.path));
-                        }
-                    }
-                });
-            });
 
         // Add Path Dialog
         if app.show_add_path {
@@ -460,7 +492,9 @@ impl MainWindow {
             let width = if selected { 1.5_f32 } else { 1.0_f32 };
             egui::Stroke::new(width, egui::Color32::from_gray(78))
         };
-        ui.painter().rect(card_rect, 4.0, fill, border, egui::StrokeKind::Inside);
+        let platinum = app.current_theme == PLATINUM_SETTING;
+        let card_radius = if platinum { 0 } else { 4 };
+        ui.painter().rect(card_rect, card_radius, fill, border, egui::StrokeKind::Inside);
 
         let content = card_rect.shrink(CARD_PADDING);
         let mut ui = ui.new_child(
@@ -478,7 +512,7 @@ impl MainWindow {
 
         ui.painter().rect_filled(
             thumb_rect.rect,
-            2.0,
+            if platinum { 0 } else { 2 },
             ui.visuals().extreme_bg_color,
         );
 

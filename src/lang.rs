@@ -54,6 +54,13 @@ static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<Lang, &'static str>>> = 
     m.insert("size", [(Lang::ZhTw, "大小"), (Lang::En, "Size")].into_iter().collect());
     m.insert("settings", [(Lang::ZhTw, "⚙️ 設定"), (Lang::En, "⚙️ Settings")].into_iter().collect());
     m.insert("toggle_theme", [(Lang::ZhTw, "切換主題"), (Lang::En, "Toggle theme")].into_iter().collect());
+    m.insert("theme_light", [(Lang::ZhTw, "淺色"), (Lang::En, "Light")].into_iter().collect());
+    m.insert("theme_dark", [(Lang::ZhTw, "深色"), (Lang::En, "Dark")].into_iter().collect());
+    m.insert("theme_platinum", [(Lang::ZhTw, "Mac OS 8 Platinum"), (Lang::En, "Mac OS 8 Platinum")].into_iter().collect());
+    m.insert("window_close", [(Lang::ZhTw, "關閉視窗"), (Lang::En, "Close window")].into_iter().collect());
+    m.insert("window_minimize", [(Lang::ZhTw, "最小化"), (Lang::En, "Minimize")].into_iter().collect());
+    m.insert("window_maximize", [(Lang::ZhTw, "最大化"), (Lang::En, "Maximize")].into_iter().collect());
+    m.insert("window_restore", [(Lang::ZhTw, "還原視窗"), (Lang::En, "Restore window")].into_iter().collect());
     m.insert("switch_to_details", [(Lang::ZhTw, "切換至清單"), (Lang::En, "Switch to list view")].into_iter().collect());
     m.insert("switch_to_thumbnails", [(Lang::ZhTw, "切換至縮圖"), (Lang::En, "Switch to thumbnails")].into_iter().collect());
     m.insert("view_thumbnails", [(Lang::ZhTw, "縮圖"), (Lang::En, "Thumbnails")].into_iter().collect());
