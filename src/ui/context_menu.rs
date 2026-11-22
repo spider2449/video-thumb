@@ -31,7 +31,6 @@ impl ContextMenu {
                 let width = (ctx.screen_rect().width() - 32.0).clamp(0.0, 250.0);
                 egui::Frame::popup(ui.style())
                     .inner_margin(10)
-                    .corner_radius(10)
                     .show(ui, |ui| {
                         ui.set_width(width);
                         ui.spacing_mut().item_spacing.y = 4.0;

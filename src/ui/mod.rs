@@ -4,6 +4,7 @@ mod main_window;
 mod screenshot_dialog;
 mod settings_dialog;
 mod tag_manager;
+pub(crate) mod theme;
 
 pub use context_menu::ContextMenu;
 pub use main_window::MainWindow;

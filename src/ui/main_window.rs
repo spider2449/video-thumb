@@ -454,7 +454,12 @@ impl MainWindow {
                 visuals.widgets.noninteractive.bg_stroke.color,
             )
         };
-        let border = egui::Stroke::new(0.5_f32, border_color);
+        let border = if visuals.dark_mode {
+            egui::Stroke::new(0.5_f32, border_color)
+        } else {
+            let width = if selected { 1.5_f32 } else { 1.0_f32 };
+            egui::Stroke::new(width, egui::Color32::from_gray(78))
+        };
         ui.painter().rect(card_rect, 4.0, fill, border, egui::StrokeKind::Inside);
 
         let content = card_rect.shrink(CARD_PADDING);
@@ -503,29 +508,24 @@ impl MainWindow {
                     ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max([0.0, 0.0].into(), [1.0, 1.0].into()), egui::Color32::WHITE);
                 }
             } else {
-                ui.painter().rect_filled(thumb_rect.rect.shrink(1.0), 0.0, egui::Color32::from_gray(50));
-                ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), egui::Color32::WHITE);
+                ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), ui.visuals().weak_text_color());
             }
         } else {
-            ui.painter().rect_filled(thumb_rect.rect.shrink(1.0), 0.0, egui::Color32::from_gray(50));
-            ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), egui::Color32::DARK_GRAY);
+            ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), ui.visuals().weak_text_color());
         }
 
         if file.has_custom_thumb {
             ui.painter().rect_filled(
                 egui::Rect::from_min_size(thumb_rect.rect.min, [8.0, 8.0].into()),
                 0.0,
-                egui::Color32::from_rgba_unmultiplied(255, 200, 0, 200),
+                ui.visuals().warn_fg_color,
             );
         }
 
         Self::handle_item_response(app, file, &thumb_rect);
 
-        let (path_color, unrated_color) = if ui.visuals().dark_mode {
-            (egui::Color32::from_gray(235), egui::Color32::from_gray(185))
-        } else {
-            (ui.visuals().text_color(), ui.visuals().weak_text_color())
-        };
+        let path_color = ui.visuals().text_color();
+        let unrated_color = ui.visuals().weak_text_color();
         let mut path = egui::text::LayoutJob::simple(
             file.file_path.clone(),
             egui::FontId::proportional(10.0),
@@ -548,7 +548,7 @@ impl MainWindow {
         let mut rating = egui::text::LayoutJob::default();
         for star in 1..=5 {
             let (symbol, color) = if star <= file.rating {
-                ("★", egui::Color32::from_rgb(255, 200, 0))
+                ("★", ui.visuals().warn_fg_color)
             } else {
                 ("☆", unrated_color)
             };
@@ -675,11 +675,11 @@ impl MainWindow {
                     let img_rect = egui::Rect::from_center_size(icon_rect.center(), tex_size * scale);
                     painter.image(tex.id(), img_rect, egui::Rect::from_min_max([0.0, 0.0].into(), [1.0, 1.0].into()), egui::Color32::WHITE);
                 } else {
-                    painter.rect_filled(icon_rect, 0.0, egui::Color32::from_gray(50));
-                    painter.text(icon_rect.center(), egui::Align2::CENTER_CENTER, "🎬", egui::FontId::proportional(12.0), egui::Color32::GRAY);
+                    painter.rect_filled(icon_rect, 0.0, ui.visuals().extreme_bg_color);
+                    painter.text(icon_rect.center(), egui::Align2::CENTER_CENTER, "🎬", egui::FontId::proportional(12.0), weak_color);
                 }
                 if file.has_custom_thumb {
-                    painter.rect_filled(egui::Rect::from_min_size(icon_rect.min, [6.0, 6.0].into()), 0.0, egui::Color32::from_rgba_unmultiplied(255, 200, 0, 200));
+                    painter.rect_filled(egui::Rect::from_min_size(icon_rect.min, [6.0, 6.0].into()), 0.0, ui.visuals().warn_fg_color);
                 }
 
                 let (name_x, size_x, date_x, rating_x) = columns(rect);
@@ -692,7 +692,7 @@ impl MainWindow {
                 let date = file.modified_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string();
                 painter.with_clip_rect(cell(date_x, rating_x)).text(egui::pos2(date_x + PAD, y), egui::Align2::LEFT_CENTER, date, font.clone(), weak_color);
                 let stars: String = (1..=5).map(|s| if s <= file.rating { '★' } else { '☆' }).collect();
-                let star_color = if file.rating > 0 { egui::Color32::from_rgb(255, 200, 0) } else { egui::Color32::from_gray(80) };
+                let star_color = if file.rating > 0 { ui.visuals().warn_fg_color } else { weak_color };
                 painter.with_clip_rect(cell(rating_x, rect.max.x + PAD)).text(egui::pos2(rating_x + PAD, y), egui::Align2::LEFT_CENTER, stars, font.clone(), star_color);
 
                 let resp = resp.on_hover_text_at_pointer(&file.file_path);

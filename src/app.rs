@@ -447,11 +447,13 @@ impl App {
     }
 
     pub fn apply_theme(&self, ctx: &egui::Context) {
-        if self.current_theme == "light" {
-            ctx.set_visuals(egui::Visuals::light());
+        let theme = if self.current_theme == "light" {
+            egui::Theme::Light
         } else {
-            ctx.set_visuals(egui::Visuals::dark());
-        }
+            egui::Theme::Dark
+        };
+        ctx.set_visuals_of(theme, crate::ui::theme::visuals(theme));
+        ctx.set_theme(theme);
     }
 
     pub fn start_thumbnail_generation(&mut self, files: Vec<String>, path_id: i64) {
