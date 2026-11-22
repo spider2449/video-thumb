@@ -21,120 +21,143 @@ impl MainWindow {
         // Toolbar
         egui::TopBottomPanel::top("toolbar")
             .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button(crate::lang::t(lang, "add_path")).clicked() {
-                        app.show_add_path = true;
-                        app.reset_add_path_dialog();
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    if ui.button("⚙").on_hover_text(crate::lang::t(lang, "settings_title")).clicked() {
+                        app.show_settings = true;
                     }
 
-                    let busy = app.is_background_busy();
-                    let scan_text = if busy {
-                        crate::lang::t(lang, "scanning").to_string()
-                    } else {
-                        crate::lang::t(lang, "update_db").to_string()
-                    };
+                    let size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+                    let layout = egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true);
+                    ui.allocate_ui_with_layout(size, layout, |ui| {
+                        if ui.button("+").on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
+                            app.show_add_path = true;
+                            app.reset_add_path_dialog();
+                        }
 
-                    ui.add_enabled_ui(!busy, |ui| {
-                        if ui.button(&scan_text).clicked() {
+                        let busy = app.is_background_busy();
+                        let scan_key = if busy { "scanning" } else { "update_db" };
+                        let scan_icon = if busy { "…" } else { "↻" };
+
+                        if ui
+                            .add_enabled(!busy, egui::Button::new(scan_icon))
+                            .on_hover_text(crate::lang::t(lang, scan_key))
+                            .on_disabled_hover_text(crate::lang::t(lang, scan_key))
+                            .clicked()
+                        {
                             Self::start_scan(app);
                         }
-                        if ui.button(crate::lang::t(lang, "rescan_thumbs")).clicked() {
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("🗑"))
+                            .on_hover_text(crate::lang::t(lang, "rescan_thumbs"))
+                            .clicked()
+                        {
                             Self::clean_unused_thumbnails(app);
                         }
-                    });
 
-                    ui.separator();
+                        ui.separator();
 
-                    ui.menu_button(crate::lang::t(lang, "sort"), |ui| {
-                        for (sort, key) in Self::SORT_COLUMNS {
-                            let selected = app.sort_by == sort;
-                            let label = if selected {
-                                format!("{} {}", crate::lang::t(lang, key), Self::sort_arrow(app.sort_desc))
+                        ui.menu_button("↕", |ui| {
+                            for (sort, key) in Self::SORT_COLUMNS {
+                                let selected = app.sort_by == sort;
+                                let label = if selected {
+                                    format!("{} {}", crate::lang::t(lang, key), Self::sort_arrow(app.sort_desc))
+                                } else {
+                                    crate::lang::t(lang, key).to_string()
+                                };
+                                if ui.selectable_label(selected, label).clicked() {
+                                    app.set_sort(sort);
+                                    ui.close_menu();
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text(crate::lang::t(lang, "sort"));
+
+                        ui.separator();
+
+                        ui.label(crate::lang::t(lang, "search"));
+                        let prev_query = app.search_query.clone();
+                        ui.add(egui::TextEdit::singleline(&mut app.search_query).desired_width(120.0));
+                        if app.search_query != prev_query {
+                            app.search_last_changed = std::time::Instant::now();
+                            app.search_debounce_pending = true;
+                        }
+                        if app.search_debounce_pending {
+                            let elapsed = app.search_last_changed.elapsed().as_millis();
+                            if elapsed >= 200 {
+                                app.invalidate_cache();
+                                app.search_debounce_pending = false;
                             } else {
-                                crate::lang::t(lang, key).to_string()
-                            };
-                            if ui.selectable_label(selected, label).clicked() {
-                                app.set_sort(sort);
-                                ui.close_menu();
+                                ctx.request_repaint_after(std::time::Duration::from_millis((200 - elapsed) as u64));
                             }
                         }
-                    });
 
-                    ui.separator();
+                        ui.separator();
 
-                    ui.label(crate::lang::t(lang, "search"));
-                    let prev_query = app.search_query.clone();
-                    ui.text_edit_singleline(&mut app.search_query);
-                    if app.search_query != prev_query {
-                        app.search_last_changed = std::time::Instant::now();
-                        app.search_debounce_pending = true;
-                    }
-                    if app.search_debounce_pending {
-                        let elapsed = app.search_last_changed.elapsed().as_millis();
-                        if elapsed >= 200 {
-                            app.invalidate_cache();
-                            app.search_debounce_pending = false;
-                        } else {
-                            ctx.request_repaint_after(std::time::Duration::from_millis((200 - elapsed) as u64));
-                        }
-                    }
-
-                    ui.separator();
-
-                    ui.menu_button(crate::lang::t(lang, "rating_filter"), |ui| {
-                        if ui.selectable_label(app.rating_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
-                            app.rating_filter = None;
-                            app.invalidate_cache();
-                            ui.close_menu();
-                        }
-                        for i in 1..=5 {
-                            let label = format!("{}{}", i, crate::lang::t(lang, "stars_suffix"));
-                            if ui.selectable_label(app.rating_filter == Some(i), &label).clicked() {
-                                app.rating_filter = Some(i);
+                        ui.menu_button("★", |ui| {
+                            if ui.selectable_label(app.rating_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
+                                app.rating_filter = None;
                                 app.invalidate_cache();
                                 ui.close_menu();
                             }
-                        }
-                    });
-
-                    ui.separator();
-
-                    if !app.tags.is_empty() {
-                        ui.menu_button(crate::lang::t(lang, "tag_filter"), |ui| {
-                            if ui.selectable_label(app.tag_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
-                                app.tag_filter = None;
-                                app.invalidate_cache();
-                                ui.close_menu();
-                            }
-                            let tags_snapshot: Vec<_> = app.tags.clone();
-                            for tag in &tags_snapshot {
-                                let color = crate::utils::hex_to_color(&tag.color);
-                                let is_selected = app.tag_filter == Some(tag.id);
-                                if ui.selectable_label(is_selected, egui::RichText::new(&tag.name).color(color)).clicked() {
-                                    app.tag_filter = Some(tag.id);
+                            for i in 1..=5 {
+                                let label = format!("{}{}", i, crate::lang::t(lang, "stars_suffix"));
+                                if ui.selectable_label(app.rating_filter == Some(i), &label).clicked() {
+                                    app.rating_filter = Some(i);
                                     app.invalidate_cache();
                                     ui.close_menu();
                                 }
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text(crate::lang::t(lang, "rating_filter"));
+
                         ui.separator();
-                    }
 
-                    if ui.button(crate::lang::t(lang, "tag_manager")).clicked() {
-                        app.show_tag_manager = true;
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if app.view_mode == ViewMode::Thumbnails {
-                            ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text(crate::lang::t(lang, "size")));
+                        if !app.tags.is_empty() {
+                            ui.menu_button("🏷", |ui| {
+                                if ui.selectable_label(app.tag_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
+                                    app.tag_filter = None;
+                                    app.invalidate_cache();
+                                    ui.close_menu();
+                                }
+                                let tags_snapshot: Vec<_> = app.tags.clone();
+                                for tag in &tags_snapshot {
+                                    let color = crate::utils::hex_to_color(&tag.color);
+                                    let is_selected = app.tag_filter == Some(tag.id);
+                                    if ui.selectable_label(is_selected, egui::RichText::new(&tag.name).color(color)).clicked() {
+                                        app.tag_filter = Some(tag.id);
+                                        app.invalidate_cache();
+                                        ui.close_menu();
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text(crate::lang::t(lang, "tag_filter"));
                             ui.separator();
                         }
 
-                        // Right-to-left layout: add in reverse visual order
-                        let mut new_mode = app.view_mode;
-                        ui.selectable_value(&mut new_mode, ViewMode::Details, format!("☰ {}", crate::lang::t(lang, "view_details")));
-                        ui.selectable_value(&mut new_mode, ViewMode::Thumbnails, format!("⊞ {}", crate::lang::t(lang, "view_thumbnails")));
-                        if new_mode != app.view_mode {
+                        if ui.button("🏷+").on_hover_text(crate::lang::t(lang, "tag_manager")).clicked() {
+                            app.show_tag_manager = true;
+                        }
+
+                        let theme_icon = if app.current_theme == "light" { "🌙" } else { "☀" };
+                        if ui.button(theme_icon).on_hover_text(crate::lang::t(lang, "toggle_theme")).clicked() {
+                            app.current_theme = if app.current_theme == "light" {
+                                "dark".to_string()
+                            } else {
+                                "light".to_string()
+                            };
+                            app.apply_theme(ctx);
+                            let db = app.db.safe_lock();
+                            let _ = db.set_setting("theme", &app.current_theme);
+                        }
+
+                        let (new_mode, view_icon, view_hint) = match app.view_mode {
+                            ViewMode::Thumbnails => (ViewMode::Details, "☰", "switch_to_details"),
+                            ViewMode::Details => (ViewMode::Thumbnails, "⊞", "switch_to_thumbnails"),
+                        };
+                        if ui.button(view_icon).on_hover_text(crate::lang::t(lang, view_hint)).clicked() {
                             app.view_mode = new_mode;
                             if let Some(id) = app.selected_file_id {
                                 app.scroll_to_idx = app.get_current_files().iter().position(|f| f.id == id);
@@ -142,26 +165,9 @@ impl MainWindow {
                             let db = app.db.safe_lock();
                             let _ = db.set_setting("view_mode", app.view_mode.as_setting());
                         }
-                        ui.separator();
 
-                        let theme_icon = if app.current_theme == "light" { "☽" } else { "☀" };
-                        if ui.button(theme_icon).clicked() {
-                            app.current_theme = if app.current_theme == "light" {
-                                "dark".to_string()
-                            } else {
-                                "light".to_string()
-                            };
-                            if app.current_theme == "light" {
-                                ctx.set_visuals(egui::Visuals::light());
-                            } else {
-                                ctx.set_visuals(egui::Visuals::dark());
-                            }
-                            let db = app.db.safe_lock();
-                            let _ = db.set_setting("theme", &app.current_theme);
-                        }
-
-                        if ui.button(crate::lang::t(lang, "settings")).clicked() {
-                            app.show_settings = true;
+                        if app.view_mode == ViewMode::Thumbnails {
+                            ui.add(egui::Slider::new(&mut app.thumbnail_size, 80.0..=400.0).text(crate::lang::t(lang, "size")));
                         }
                     });
                 });
@@ -196,7 +202,7 @@ impl MainWindow {
                             }
                         });
                     ui.separator();
-                    if ui.button(crate::lang::t(lang, "add_path")).clicked() {
+                    if ui.button("+").on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
                         app.show_add_path = true;
                         app.reset_add_path_dialog();
                     }

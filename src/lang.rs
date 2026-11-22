@@ -53,6 +53,9 @@ static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<Lang, &'static str>>> = 
     m.insert("tag_manager", [(Lang::ZhTw, "🏷️ 標籤管理"), (Lang::En, "🏷️ Tag Manager")].into_iter().collect());
     m.insert("size", [(Lang::ZhTw, "大小"), (Lang::En, "Size")].into_iter().collect());
     m.insert("settings", [(Lang::ZhTw, "⚙️ 設定"), (Lang::En, "⚙️ Settings")].into_iter().collect());
+    m.insert("toggle_theme", [(Lang::ZhTw, "切換主題"), (Lang::En, "Toggle theme")].into_iter().collect());
+    m.insert("switch_to_details", [(Lang::ZhTw, "切換至清單"), (Lang::En, "Switch to list view")].into_iter().collect());
+    m.insert("switch_to_thumbnails", [(Lang::ZhTw, "切換至縮圖"), (Lang::En, "Switch to thumbnails")].into_iter().collect());
     m.insert("view_thumbnails", [(Lang::ZhTw, "縮圖"), (Lang::En, "Thumbnails")].into_iter().collect());
     m.insert("view_details", [(Lang::ZhTw, "詳細資料"), (Lang::En, "Details")].into_iter().collect());
     m.insert("file_size", [(Lang::ZhTw, "檔案大小"), (Lang::En, "File Size")].into_iter().collect());
