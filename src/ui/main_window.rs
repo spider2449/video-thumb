@@ -6,6 +6,9 @@ use eframe::egui;
 use log::info;
 use std::sync::atomic::Ordering;
 
+const CARD_PADDING: f32 = 6.0;
+const PATH_ROWS: usize = 3;
+
 pub struct MainWindow {}
 
 impl MainWindow {
@@ -13,9 +16,7 @@ impl MainWindow {
         Self {}
     }
 
-    pub fn show_main(ctx: &egui::Context, app: &mut App) {
-        let _available_width = ctx.input(|i| i.screen_rect.width()) - 40.0;
-        let _cols = ((_available_width / app.thumbnail_size) as usize).max(1);
+    pub fn show_main(ctx: &egui::Context, app: &mut App) -> usize {
         let lang = app.lang;
 
         // Toolbar
@@ -210,21 +211,27 @@ impl MainWindow {
             });
 
         // Main content
-        egui::CentralPanel::default()
+        let items_per_row = egui::CentralPanel::default()
             .show(ctx, |ui| {
                 let files = app.get_current_files();
                 let scroll_target = app.scroll_to_idx.take();
 
                 if app.view_mode == ViewMode::Details {
                     Self::show_details_view(ui, ctx, app, &files, scroll_target);
-                    return;
+                    return 1;
                 }
 
-                let available_width = ctx.input(|i| i.screen_rect.width()) - 40.0;
                 let item_width = app.thumbnail_size;
-                let item_height = app.thumbnail_size + 50.0;
-                let items_per_row = (available_width / item_width).max(1.0) as usize;
-                let row_height = item_height + 4.0;
+                let path_height = PATH_ROWS as f32
+                    * ui.fonts(|fonts| fonts.row_height(&egui::FontId::proportional(10.0)));
+                let rating_height =
+                    ui.fonts(|fonts| fonts.row_height(&egui::FontId::proportional(14.0)));
+                let spacing = ui.spacing().item_spacing;
+                let item_height = item_width + path_height + rating_height + 2.0 * spacing.y;
+                let available_width = ui.available_width() - ui.spacing().scroll.allocated_width();
+                let items_per_row = ((available_width + spacing.x) / (item_width + spacing.x))
+                    .floor()
+                    .max(1.0) as usize;
                 let total_rows = files.len().div_ceil(items_per_row);
 
                 let mut scroll_area = egui::ScrollArea::vertical()
@@ -232,47 +239,28 @@ impl MainWindow {
                     .auto_shrink([false; 2]);
 
                 if let Some(idx) = scroll_target {
-                    let target_row = idx / items_per_row.max(1);
-                    let target_y = target_row as f32 * row_height;
+                    let target_row = idx / items_per_row;
+                    let target_y = target_row as f32 * (item_height + spacing.y);
                     scroll_area = scroll_area.vertical_scroll_offset(target_y);
                 }
 
-                let scroll_output = scroll_area.show(ui, |ui| {
-                    let clip_rect = ui.clip_rect();
-                    let cursor_min_y = ui.cursor().min.y;
-
-                    let visible_top = (clip_rect.min.y - cursor_min_y).max(0.0);
-                    let visible_bottom = (clip_rect.max.y - cursor_min_y).max(0.0);
-
-                    let first_visible_row = (visible_top / row_height).floor() as usize;
-                    let last_visible_row = ((visible_bottom / row_height).ceil() as usize).min(total_rows);
-
-                    let extra_rows = 2;
-                    let render_first = first_visible_row.saturating_sub(extra_rows);
-                    let render_last = (last_visible_row + extra_rows).min(total_rows);
-
-                    if render_first > 0 {
-                        ui.add_space(render_first as f32 * row_height);
-                    }
-
-                    for row in render_first..render_last {
-                        ui.horizontal(|ui| {
+                scroll_area.show_rows(ui, item_height, total_rows, |ui, rows| {
+                    for row in rows {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                             let start_idx = row * items_per_row;
                             let end_idx = (start_idx + items_per_row).min(files.len());
-                            for idx in start_idx..end_idx {
-                                let file = &files[idx];
-                                Self::show_thumbnail_item(ui, file, app.thumbnail_size, ctx, app);
+                            for file in &files[start_idx..end_idx] {
+                                Self::show_thumbnail_item(
+                                    ui, file, egui::vec2(item_width, item_height), path_height, ctx, app,
+                                );
                             }
                         });
                     }
-
-                    if render_last < total_rows {
-                        ui.add_space((total_rows - render_last) as f32 * row_height);
-                    }
                 });
 
-                let _ = scroll_output;
-            });
+                items_per_row
+            })
+            .inner;
 
     // Context menu overlay (rendered on top)
     {
@@ -440,87 +428,129 @@ impl MainWindow {
             }
         }
     }
+    items_per_row
 }
 
-    fn show_thumbnail_item(ui: &mut egui::Ui, file: &crate::db::FileEntry, size: f32, ctx: &egui::Context, app: &mut App) {
-        ui.allocate_ui([size, size + 50.0].into(), |ui| {
-            ui.vertical(|ui| {
-                let thumb_size_inner = size - 4.0;
-                let thumb_rect = ui.allocate_rect(
-                    egui::Rect::from_min_size(ui.cursor().min, [thumb_size_inner, thumb_size_inner].into()),
-                    egui::Sense::click_and_drag(),
-                );
+    fn show_thumbnail_item(
+        ui: &mut egui::Ui,
+        file: &crate::db::FileEntry,
+        size: egui::Vec2,
+        path_height: f32,
+        ctx: &egui::Context,
+        app: &mut App,
+    ) {
+        let (_, card_rect) = ui.allocate_space(size);
+        let selected = app.selected_file_id == Some(file.id);
+        let visuals = ui.visuals();
+        let (fill, border_color) = if selected {
+            (visuals.selection.bg_fill, visuals.selection.stroke.color)
+        } else {
+            (
+                visuals.widgets.inactive.weak_bg_fill,
+                visuals.widgets.noninteractive.bg_stroke.color,
+            )
+        };
+        let border = egui::Stroke::new(0.5_f32, border_color);
+        ui.painter().rect(card_rect, 6.0, fill, border, egui::StrokeKind::Inside);
 
-                ui.painter().rect_filled(
-                    thumb_rect.rect.shrink(1.0),
-                    0.0,
-                    egui::Color32::from_gray(30),
-                );
+        let content = card_rect.shrink(CARD_PADDING);
+        let mut ui = ui.new_child(
+            egui::UiBuilder::new()
+                .id_salt(file.id)
+                .max_rect(content)
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        let thumb_size_inner = content.width();
+        let thumb_rect = ui.allocate_rect(
+            egui::Rect::from_min_size(ui.cursor().min, [thumb_size_inner, thumb_size_inner].into()),
+            egui::Sense::click_and_drag(),
+        );
 
-                let is_selected = app.selected_file_id == Some(file.id);
-                if is_selected {
-                    ui.painter().rect_stroke(
-                        thumb_rect.rect.shrink(1.0),
-                        0.0,
-                        egui::Stroke::new(3.0, ui.visuals().selection.stroke.color),
-                        egui::StrokeKind::Inside,
-                    );
-                }
+        ui.painter().rect_filled(
+            thumb_rect.rect.shrink(1.0),
+            4.0,
+            ui.visuals().extreme_bg_color,
+        );
 
-                if let Some(thumb_path) = &file.thumbnail_path {
-                    let path = std::path::PathBuf::from(thumb_path);
-                    if path.exists() {
-                        if let Some(tex) = Self::load_tex(ctx, app, &path) {
-                            let tex_size = tex.size_vec2();
-                            let container_size = thumb_rect.rect.size();
+        if let Some(thumb_path) = &file.thumbnail_path {
+            let path = std::path::PathBuf::from(thumb_path);
+            if path.exists() {
+                if let Some(tex) = Self::load_tex(ctx, app, &path) {
+                    let tex_size = tex.size_vec2();
+                    let container_size = thumb_rect.rect.size();
 
-                            let aspect_tex = tex_size.x / tex_size.y;
-                            let aspect_container = container_size.x / container_size.y;
+                    let aspect_tex = tex_size.x / tex_size.y;
+                    let aspect_container = container_size.x / container_size.y;
 
-                            let (draw_w, draw_h) = if aspect_tex > aspect_container {
-                                let h = container_size.x / aspect_tex;
-                                (container_size.x, h)
-                            } else {
-                                let w = container_size.y * aspect_tex;
-                                (w, container_size.y)
-                            };
-
-                            let offset_x = (container_size.x - draw_w) / 2.0;
-                            let offset_y = (container_size.y - draw_h) / 2.0;
-                            let img_min = thumb_rect.rect.min + egui::Vec2::new(offset_x, offset_y);
-                            let img_rect = egui::Rect::from_min_size(img_min, egui::Vec2::new(draw_w, draw_h));
-
-                            ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max([0.0, 0.0].into(), [1.0, 1.0].into()), egui::Color32::WHITE);
-                        }
+                    let (draw_w, draw_h) = if aspect_tex > aspect_container {
+                        let h = container_size.x / aspect_tex;
+                        (container_size.x, h)
                     } else {
-                        ui.painter().rect_filled(thumb_rect.rect.shrink(1.0), 0.0, egui::Color32::from_gray(50));
-                        ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), egui::Color32::WHITE);
-                    }
-                } else {
-                    ui.painter().rect_filled(thumb_rect.rect.shrink(1.0), 0.0, egui::Color32::from_gray(50));
-                    ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), egui::Color32::DARK_GRAY);
+                        let w = container_size.y * aspect_tex;
+                        (w, container_size.y)
+                    };
+
+                    let offset_x = (container_size.x - draw_w) / 2.0;
+                    let offset_y = (container_size.y - draw_h) / 2.0;
+                    let img_min = thumb_rect.rect.min + egui::Vec2::new(offset_x, offset_y);
+                    let img_rect = egui::Rect::from_min_size(img_min, egui::Vec2::new(draw_w, draw_h));
+
+                    ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max([0.0, 0.0].into(), [1.0, 1.0].into()), egui::Color32::WHITE);
                 }
+            } else {
+                ui.painter().rect_filled(thumb_rect.rect.shrink(1.0), 0.0, egui::Color32::from_gray(50));
+                ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), egui::Color32::WHITE);
+            }
+        } else {
+            ui.painter().rect_filled(thumb_rect.rect.shrink(1.0), 0.0, egui::Color32::from_gray(50));
+            ui.painter().text(thumb_rect.rect.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(24.0), egui::Color32::DARK_GRAY);
+        }
 
-                if file.has_custom_thumb {
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(thumb_rect.rect.min, [8.0, 8.0].into()),
-                        0.0,
-                        egui::Color32::from_rgba_unmultiplied(255, 200, 0, 200),
-                    );
-                }
+        if file.has_custom_thumb {
+            ui.painter().rect_filled(
+                egui::Rect::from_min_size(thumb_rect.rect.min, [8.0, 8.0].into()),
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(255, 200, 0, 200),
+            );
+        }
 
-                Self::handle_item_response(app, file, &thumb_rect);
+        Self::handle_item_response(app, file, &thumb_rect);
 
-                ui.label(egui::RichText::new(&file.file_path).size(10.0).color(egui::Color32::LIGHT_GRAY));
+        let (path_color, unrated_color) = if ui.visuals().dark_mode {
+            (egui::Color32::from_gray(235), egui::Color32::from_gray(185))
+        } else {
+            (ui.visuals().text_color(), ui.visuals().weak_text_color())
+        };
+        let mut path = egui::text::LayoutJob::simple(
+            file.file_path.clone(),
+            egui::FontId::proportional(10.0),
+            path_color,
+            content.width(),
+        );
+        path.wrap.max_rows = PATH_ROWS;
+        let path = ui.fonts(|fonts| fonts.layout_job(path));
+        let elided = path.elided;
+        let response = ui.allocate_response(
+            egui::vec2(content.width(), path_height),
+            egui::Sense::hover(),
+        );
+        ui.painter().galley(response.rect.min, path, path_color);
+        if elided {
+            response.on_hover_text(&file.file_path);
+        }
 
-                ui.horizontal_wrapped(|ui| {
-                    for star in 1..=5 {
-                        let color = if star <= file.rating { egui::Color32::from_rgb(255, 200, 0) } else { egui::Color32::from_gray(80) };
-                        ui.label(egui::RichText::new(if star <= file.rating { "★" } else { "☆" }).color(color).size(14.0));
-                    }
-                });
-            });
-        });
+        let mut rating = egui::text::LayoutJob::default();
+        for star in 1..=5 {
+            let (symbol, color) = if star <= file.rating {
+                ("★", egui::Color32::from_rgb(255, 200, 0))
+            } else {
+                ("☆", unrated_color)
+            };
+            rating.append(symbol, 0.0, egui::TextFormat::simple(
+                egui::FontId::proportional(14.0), color,
+            ));
+        }
+        ui.add(egui::Label::new(rating).truncate());
     }
 
     /// Selection, double-click to play and right-click context menu, shared by both view modes.

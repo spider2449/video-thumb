@@ -657,7 +657,7 @@ impl App {
 
         self.refresh_cache_if_needed();
 
-        MainWindow::show_main(ctx, self);
+        let items_per_row = MainWindow::show_main(ctx, self);
 
         // Keyboard navigation for selected video (skip while typing, e.g. search box)
         if let Some(selected_id) = self.selected_file_id {
@@ -666,14 +666,6 @@ impl App {
             }
             let current_files = self.get_current_files();
             if let Some(selected_idx) = current_files.iter().position(|f| f.id == selected_id) {
-                let items_per_row = match self.view_mode {
-                    ViewMode::Thumbnails => {
-                        let screen_width = ctx.input(|i| i.screen_rect.width());
-                        ((screen_width - 40.0) / self.thumbnail_size).max(1.0) as usize
-                    }
-                    ViewMode::Details => 1,
-                };
-
                 let new_idx = if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
                     Some(selected_idx.saturating_add(1).min(current_files.len().saturating_sub(1)))
                 } else if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
