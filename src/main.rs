@@ -62,7 +62,8 @@ fn main() -> Result<(), eframe::Error> {
     let window_state = config.get_window_state();
 
     let viewport = egui::ViewportBuilder::default()
-        .with_inner_size([window_state.width, window_state.height]);
+        .with_inner_size([window_state.width, window_state.height])
+        .with_icon(ui::icons::window_icon());
 
     let viewport = if let (Some(x), Some(y)) = (window_state.x, window_state.y) {
         viewport.with_position(egui::Pos2::new(x, y))

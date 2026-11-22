@@ -1,4 +1,5 @@
 mod context_menu;
+pub(crate) mod icons;
 mod main_window;
 mod screenshot_dialog;
 mod settings_dialog;

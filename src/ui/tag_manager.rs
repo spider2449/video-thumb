@@ -1,3 +1,4 @@
+use super::icons::Icon;
 use crate::app::App;
 use crate::db::{SafeMutexExt, Tag};
 use eframe::egui;
@@ -58,11 +59,11 @@ impl TagManager {
 
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let tag_id = tag.id;
-                                if ui.button(crate::lang::t(lang, "delete")).clicked() {
+                                if ui.add(Icon::Trash.labeled(ui, crate::lang::t(lang, "delete"))).clicked() {
                                     app.db.safe_lock().delete_tag(tag_id).ok();
                                     app.tags.retain(|t| t.id != tag_id);
                                 }
-                                if ui.button(crate::lang::t(lang, "edit")).clicked() {
+                                if ui.add(Icon::Edit.labeled(ui, crate::lang::t(lang, "edit"))).clicked() {
                                     self.editing_tag_id = Some(tag_id);
                                     self.edit_name = tag.name.clone();
                                     self.edit_color = tag.color.clone();
@@ -86,10 +87,10 @@ impl TagManager {
                         self.show_color_presets(ui, true);
 
                         ui.horizontal(|ui| {
-                            if ui.button(crate::lang::t(lang, "cancel")).clicked() {
+                            if ui.add(Icon::Close.labeled(ui, crate::lang::t(lang, "cancel"))).clicked() {
                                 self.editing_tag_id = None;
                             }
-                            if ui.button(crate::lang::t(lang, "save")).clicked() {
+                            if ui.add(Icon::Save.labeled(ui, crate::lang::t(lang, "save"))).clicked() {
                                 self.save_tag_edit(editing_id, app);
                             }
                         });
@@ -106,7 +107,7 @@ impl TagManager {
 
                         self.show_color_presets(ui, false);
 
-                        if ui.button(crate::lang::t(lang, "add")).clicked() {
+                        if ui.add(Icon::Plus.labeled(ui, crate::lang::t(lang, "add"))).clicked() {
                             self.add_new_tag(app);
                         }
 

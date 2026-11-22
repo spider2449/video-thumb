@@ -1,3 +1,4 @@
+use super::icons::Icon;
 use crate::app::App;
 use crate::db::{FileEntry, SafeMutexExt};
 use eframe::egui;
@@ -62,7 +63,7 @@ impl ContextMenu {
             .on_hover_text(&file.file_path);
         ui.separator();
 
-        if Self::action(ui, crate::lang::t(lang, "play")).clicked() {
+        if Self::action(ui, Icon::Play, crate::lang::t(lang, "play")).clicked() {
             self.play_file_internal(&file.file_path, app);
             self.file = None;
         }
@@ -110,7 +111,7 @@ impl ContextMenu {
             let tag_id = tag.id;
             let file_id_copy = file_id;
             ui.horizontal(|ui| {
-                if ui.small_button("×").clicked() {
+                if ui.add(Icon::Close.button(ui)).on_hover_text(crate::lang::t(lang, "remove_tag")).clicked() {
                     app.db
                         .safe_lock()
                         .remove_tag_from_file(file_id_copy, tag_id)
@@ -157,14 +158,14 @@ impl ContextMenu {
             });
         }
 
-        if Self::action(ui, crate::lang::t(lang, "manage_tags")).clicked() {
+        if Self::action(ui, Icon::TagPlus, crate::lang::t(lang, "manage_tags")).clicked() {
             app.show_tag_manager = true;
             self.file = None;
         }
 
         ui.separator();
 
-        if Self::action(ui, crate::lang::t(lang, "screenshot")).clicked() {
+        if Self::action(ui, Icon::Camera, crate::lang::t(lang, "screenshot")).clicked() {
             app.screenshot_dialog = Some(crate::ui::ScreenshotDialog::new(file.clone(), ui.ctx()));
             self.file = None;
         }
@@ -181,7 +182,7 @@ impl ContextMenu {
         if !other_tabs.is_empty() {
             ui.collapsing(crate::lang::t(lang, "move_to_tab"), |ui| {
                 for (dest_id, dest_path, dest_name) in &other_tabs {
-                    if Self::action(ui, dest_name.as_str()).clicked() {
+                    if Self::action(ui, Icon::Folder, dest_name.as_str()).clicked() {
                         let new_path = std::path::PathBuf::from(dest_path).join(&file.file_name);
                         let new_path_str = new_path.to_string_lossy().to_string();
                         self.move_file_to_tab_internal(file, *dest_id, &new_path_str, app);
@@ -194,33 +195,33 @@ impl ContextMenu {
 
         ui.separator();
 
-        if Self::action(ui, crate::lang::t(lang, "open_folder")).clicked() {
+        if Self::action(ui, Icon::Folder, crate::lang::t(lang, "open_folder")).clicked() {
             self.open_file_location_internal(file);
             self.file = None;
         }
 
-        if Self::action(ui, crate::lang::t(lang, "copy_path")).clicked() {
+        if Self::action(ui, Icon::Copy, crate::lang::t(lang, "copy_path")).clicked() {
             ui.ctx().copy_text(file.file_path.clone());
             self.file = None;
         }
 
         ui.separator();
 
-        if file.has_custom_thumb && Self::action(ui, crate::lang::t(lang, "reset_thumb")).clicked()
+        if file.has_custom_thumb && Self::action(ui, Icon::Refresh, crate::lang::t(lang, "reset_thumb")).clicked()
         {
             self.reset_thumbnail_internal(file, app);
         }
 
         let remove = egui::RichText::new(crate::lang::t(lang, "remove_record"))
             .color(ui.visuals().error_fg_color);
-        if Self::action(ui, remove).clicked() {
+        if Self::action(ui, Icon::Trash, remove).clicked() {
             self.remove_file_internal(file.clone(), app);
         }
     }
 
-    fn action(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
+    fn action(ui: &mut egui::Ui, icon: Icon, text: impl Into<egui::WidgetText>) -> egui::Response {
         ui.add(
-            egui::Button::new(text)
+            icon.labeled(ui, text)
                 .truncate()
                 .min_size(egui::vec2(ui.available_width(), 26.0))
                 .corner_radius(5),

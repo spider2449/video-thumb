@@ -1,3 +1,4 @@
+use super::icons::{self, Icon};
 use crate::app::{SortBy, ViewMode};
 use crate::db::SafeMutexExt;
 use crate::App;
@@ -23,24 +24,26 @@ impl MainWindow {
         egui::TopBottomPanel::top("toolbar")
             .show(ctx, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    if ui.button("⚙").on_hover_text(crate::lang::t(lang, "settings_title")).clicked() {
+                    if ui.add(Icon::Settings.button(ui)).on_hover_text(crate::lang::t(lang, "settings_title")).clicked() {
                         app.show_settings = true;
                     }
 
                     let size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
                     let layout = egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true);
                     ui.allocate_ui_with_layout(size, layout, |ui| {
-                        if ui.button("+").on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
+                        ui.add(icons::logo(ui)).on_hover_text(crate::lang::t(lang, "app_name"));
+                        ui.separator();
+                        if ui.add(Icon::FolderPlus.button(ui)).on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
                             app.show_add_path = true;
                             app.reset_add_path_dialog();
                         }
 
                         let busy = app.is_background_busy();
                         let scan_key = if busy { "scanning" } else { "update_db" };
-                        let scan_icon = if busy { "…" } else { "↻" };
+                        let scan_icon = if busy { Icon::Busy } else { Icon::Refresh };
 
                         if ui
-                            .add_enabled(!busy, egui::Button::new(scan_icon))
+                            .add_enabled(!busy, scan_icon.button(ui))
                             .on_hover_text(crate::lang::t(lang, scan_key))
                             .on_disabled_hover_text(crate::lang::t(lang, scan_key))
                             .clicked()
@@ -48,7 +51,7 @@ impl MainWindow {
                             Self::start_scan(app);
                         }
                         if ui
-                            .add_enabled(!busy, egui::Button::new("🗑"))
+                            .add_enabled(!busy, Icon::Trash.button(ui))
                             .on_hover_text(crate::lang::t(lang, "rescan_thumbs"))
                             .clicked()
                         {
@@ -57,7 +60,7 @@ impl MainWindow {
 
                         ui.separator();
 
-                        ui.menu_button("↕", |ui| {
+                        egui::menu::menu_custom_button(ui, Icon::Sort.button(ui), |ui| {
                             for (sort, key) in Self::SORT_COLUMNS {
                                 let selected = app.sort_by == sort;
                                 let label = if selected {
@@ -76,9 +79,9 @@ impl MainWindow {
 
                         ui.separator();
 
-                        ui.label(crate::lang::t(lang, "search"));
+                        ui.add(Icon::Search.image(ui).tint(ui.visuals().text_color())).on_hover_text(crate::lang::t(lang, "search"));
                         let prev_query = app.search_query.clone();
-                        ui.add(egui::TextEdit::singleline(&mut app.search_query).desired_width(120.0));
+                        ui.add(egui::TextEdit::singleline(&mut app.search_query).desired_width(120.0).hint_text(crate::lang::t(lang, "search")));
                         if app.search_query != prev_query {
                             app.search_last_changed = std::time::Instant::now();
                             app.search_debounce_pending = true;
@@ -95,7 +98,7 @@ impl MainWindow {
 
                         ui.separator();
 
-                        ui.menu_button("★", |ui| {
+                        egui::menu::menu_custom_button(ui, Icon::Star.button(ui).selected(app.rating_filter.is_some()), |ui| {
                             if ui.selectable_label(app.rating_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
                                 app.rating_filter = None;
                                 app.invalidate_cache();
@@ -116,7 +119,7 @@ impl MainWindow {
                         ui.separator();
 
                         if !app.tags.is_empty() {
-                            ui.menu_button("🏷", |ui| {
+                            egui::menu::menu_custom_button(ui, Icon::Tag.button(ui).selected(app.tag_filter.is_some()), |ui| {
                                 if ui.selectable_label(app.tag_filter.is_none(), crate::lang::t(lang, "all")).clicked() {
                                     app.tag_filter = None;
                                     app.invalidate_cache();
@@ -138,12 +141,12 @@ impl MainWindow {
                             ui.separator();
                         }
 
-                        if ui.button("🏷+").on_hover_text(crate::lang::t(lang, "tag_manager")).clicked() {
+                        if ui.add(Icon::TagPlus.button(ui)).on_hover_text(crate::lang::t(lang, "tag_manager")).clicked() {
                             app.show_tag_manager = true;
                         }
 
-                        let theme_icon = if app.current_theme == "light" { "🌙" } else { "☀" };
-                        if ui.button(theme_icon).on_hover_text(crate::lang::t(lang, "toggle_theme")).clicked() {
+                        let theme_icon = if app.current_theme == "light" { Icon::Moon } else { Icon::Sun };
+                        if ui.add(theme_icon.button(ui)).on_hover_text(crate::lang::t(lang, "toggle_theme")).clicked() {
                             app.current_theme = if app.current_theme == "light" {
                                 "dark".to_string()
                             } else {
@@ -155,10 +158,10 @@ impl MainWindow {
                         }
 
                         let (new_mode, view_icon, view_hint) = match app.view_mode {
-                            ViewMode::Thumbnails => (ViewMode::Details, "☰", "switch_to_details"),
-                            ViewMode::Details => (ViewMode::Thumbnails, "⊞", "switch_to_thumbnails"),
+                            ViewMode::Thumbnails => (ViewMode::Details, Icon::List, "switch_to_details"),
+                            ViewMode::Details => (ViewMode::Thumbnails, Icon::Grid, "switch_to_thumbnails"),
                         };
-                        if ui.button(view_icon).on_hover_text(crate::lang::t(lang, view_hint)).clicked() {
+                        if ui.add(view_icon.button(ui)).on_hover_text(crate::lang::t(lang, view_hint)).clicked() {
                             app.view_mode = new_mode;
                             if let Some(id) = app.selected_file_id {
                                 app.scroll_to_idx = app.get_current_files().iter().position(|f| f.id == id);
@@ -185,7 +188,7 @@ impl MainWindow {
                                 (p.id, p.display_name.clone(), app.current_path_id == Some(p.id))
                             }).collect();
                             for &(ref path_id, ref display_name, selected) in &tabs {
-                                let button = egui::Button::new(display_name.as_str()).selected(selected);
+                                let button = Icon::Folder.labeled(ui, display_name.as_str()).selected(selected);
 
                                 if ui.add(button).clicked() {
                                     app.current_path_id = Some(*path_id);
@@ -197,13 +200,13 @@ impl MainWindow {
                                 }
 
                                 if selected
-                                    && ui.button("×").clicked() {
+                                    && ui.add(Icon::Close.button(ui)).on_hover_text(crate::lang::t(lang, "confirm_remove_path")).clicked() {
                                         app.remove_path_confirm = Some((*path_id, display_name.clone()));
                                     }
                             }
                         });
                     ui.separator();
-                    if ui.button("+").on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
+                    if ui.add(Icon::FolderPlus.button(ui)).on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
                         app.show_add_path = true;
                         app.reset_add_path_dialog();
                     }
@@ -298,7 +301,7 @@ impl MainWindow {
                 ui.add_space(16.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(crate::lang::t(lang, "confirm_remove")).clicked() {
+                        if ui.add(Icon::Check.labeled(ui, crate::lang::t(lang, "confirm_remove"))).clicked() {
                             let mut db = app.db.safe_lock();
                             let should_remove = db.remove_path(path_id).is_ok();
                             drop(db);
@@ -312,7 +315,7 @@ impl MainWindow {
                             }
                             keep_open = false;
                         }
-                        if ui.button(crate::lang::t(lang, "cancel")).clicked() {
+                        if ui.add(Icon::Close.labeled(ui, crate::lang::t(lang, "cancel"))).clicked() {
                             keep_open = false;
                         }
                     });
@@ -355,7 +358,7 @@ impl MainWindow {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(crate::lang::t(lang, "folder_path"));
                         ui.text_edit_singleline(&mut app.add_path_path);
-                        if ui.button(crate::lang::t(lang, "browse")).clicked() {
+                        if ui.add(Icon::Folder.labeled(ui, crate::lang::t(lang, "browse"))).clicked() {
                             if let Some(selected_path) = rfd::FileDialog::new().pick_folder() {
                                 app.add_path_path = selected_path.to_string_lossy().to_string();
                                 if app.add_path_display_name.is_empty() {
@@ -381,11 +384,11 @@ impl MainWindow {
 
                     ui.add_space(16.0);
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button(crate::lang::t(lang, "cancel")).clicked() {
+                        if ui.add(Icon::Close.labeled(ui, crate::lang::t(lang, "cancel"))).clicked() {
                             app.show_add_path = false;
                             app.reset_add_path_dialog();
                         }
-                        if ui.button(crate::lang::t(lang, "add")).clicked() {
+                        if ui.add(Icon::Plus.labeled(ui, crate::lang::t(lang, "add"))).clicked() {
                             app.add_path();
                         }
                     });

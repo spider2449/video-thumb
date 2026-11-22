@@ -1,3 +1,4 @@
+use super::icons::Icon;
 use crate::app::App;
 use crate::db::{FileEntry, SafeMutexExt};
 use eframe::egui;
@@ -152,10 +153,10 @@ impl ScreenshotDialog {
 
                 let (close, capture) = controls
                     .horizontal(|ui| {
-                        let cancel = ui.button(crate::lang::t(lang, "cancel")).clicked();
+                        let cancel = ui.add(Icon::Close.labeled(ui, crate::lang::t(lang, "cancel"))).clicked();
                         let capture = ui
                             .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.button(crate::lang::t(lang, "capture")).clicked()
+                                ui.add(Icon::Camera.labeled(ui, crate::lang::t(lang, "capture"))).clicked()
                             })
                             .inner;
                         (cancel || capture, capture)

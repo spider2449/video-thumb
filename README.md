@@ -1,5 +1,7 @@
 # Video Thumb Viewer
 
+<img src="assets/logo.png" alt="Video Thumb Viewer logo" width="112">
+
 A Rust-based video thumbnail viewer with SQLite storage, tagging, and rating features.
 
 ## Features

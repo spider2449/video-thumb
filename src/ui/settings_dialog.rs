@@ -1,3 +1,4 @@
+use super::icons::Icon;
 use crate::app::App;
 use crate::db::SafeMutexExt;
 use crate::lang::Lang;
@@ -71,7 +72,7 @@ impl SettingsDialog {
             ui.horizontal(|ui| {
                 ui.label(crate::lang::t(lang, "player_path"));
                 ui.text_edit_singleline(&mut self.player_path);
-                if ui.button(crate::lang::t(lang, "browse")).clicked() {
+                if ui.add(Icon::Folder.labeled(ui, crate::lang::t(lang, "browse"))).clicked() {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter(crate::lang::t(lang, "executable"), &["exe", "app", ""])
                         .pick_file()
@@ -95,7 +96,7 @@ impl SettingsDialog {
             ui.horizontal(|ui| {
                 ui.label(crate::lang::t(lang, "cache_dir"));
                 ui.text_edit_singleline(&mut self.data_dir);
-                if ui.button(crate::lang::t(lang, "browse")).clicked() {
+                if ui.add(Icon::Folder.labeled(ui, crate::lang::t(lang, "browse"))).clicked() {
                     if let Some(selected_path) = rfd::FileDialog::new().pick_folder() {
                         self.data_dir = selected_path.to_string_lossy().to_string();
                     }
@@ -112,10 +113,10 @@ impl SettingsDialog {
             }
 
             ui.horizontal(|ui| {
-                if ui.button(crate::lang::t(lang, "close")).clicked() {
+                if ui.add(Icon::Close.labeled(ui, crate::lang::t(lang, "close"))).clicked() {
                     self.close_after_save = true;
                 }
-                if ui.button(crate::lang::t(lang, "save")).clicked() {
+                if ui.add(Icon::Save.labeled(ui, crate::lang::t(lang, "save"))).clicked() {
                     if let Err(e) = self.save(app) {
                         self.error = Some(e);
                     } else {
