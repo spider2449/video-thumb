@@ -6,8 +6,8 @@ use eframe::egui;
 use log::info;
 use std::sync::atomic::Ordering;
 
-const CARD_PADDING: f32 = 6.0;
-const PATH_ROWS: usize = 3;
+const CARD_PADDING: f32 = 2.0;
+const CARD_ITEM_SPACING: f32 = 2.0;
 
 pub struct MainWindow {}
 
@@ -222,12 +222,13 @@ impl MainWindow {
                 }
 
                 let item_width = app.thumbnail_size;
-                let path_height = PATH_ROWS as f32
-                    * ui.fonts(|fonts| fonts.row_height(&egui::FontId::proportional(10.0)));
+                let path_height =
+                    ui.fonts(|fonts| fonts.row_height(&egui::FontId::proportional(10.0)));
                 let rating_height =
                     ui.fonts(|fonts| fonts.row_height(&egui::FontId::proportional(14.0)));
                 let spacing = ui.spacing().item_spacing;
-                let item_height = item_width + path_height + rating_height + 2.0 * spacing.y;
+                let item_height =
+                    item_width + path_height + rating_height + 2.0 * CARD_ITEM_SPACING;
                 let available_width = ui.available_width() - ui.spacing().scroll.allocated_width();
                 let items_per_row = ((available_width + spacing.x) / (item_width + spacing.x))
                     .floor()
@@ -446,12 +447,12 @@ impl MainWindow {
             (visuals.selection.bg_fill, visuals.selection.stroke.color)
         } else {
             (
-                visuals.widgets.inactive.weak_bg_fill,
+                visuals.faint_bg_color,
                 visuals.widgets.noninteractive.bg_stroke.color,
             )
         };
         let border = egui::Stroke::new(0.5_f32, border_color);
-        ui.painter().rect(card_rect, 6.0, fill, border, egui::StrokeKind::Inside);
+        ui.painter().rect(card_rect, 4.0, fill, border, egui::StrokeKind::Inside);
 
         let content = card_rect.shrink(CARD_PADDING);
         let mut ui = ui.new_child(
@@ -460,6 +461,7 @@ impl MainWindow {
                 .max_rect(content)
                 .layout(egui::Layout::top_down(egui::Align::Min)),
         );
+        ui.spacing_mut().item_spacing.y = CARD_ITEM_SPACING;
         let thumb_size_inner = content.width();
         let thumb_rect = ui.allocate_rect(
             egui::Rect::from_min_size(ui.cursor().min, [thumb_size_inner, thumb_size_inner].into()),
@@ -467,8 +469,8 @@ impl MainWindow {
         );
 
         ui.painter().rect_filled(
-            thumb_rect.rect.shrink(1.0),
-            4.0,
+            thumb_rect.rect,
+            2.0,
             ui.visuals().extreme_bg_color,
         );
 
@@ -527,7 +529,8 @@ impl MainWindow {
             path_color,
             content.width(),
         );
-        path.wrap.max_rows = PATH_ROWS;
+        path.wrap.max_rows = 1;
+        path.wrap.break_anywhere = true;
         let path = ui.fonts(|fonts| fonts.layout_job(path));
         let elided = path.elided;
         let response = ui.allocate_response(

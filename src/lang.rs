@@ -118,7 +118,10 @@ static TRANSLATIONS: Lazy<HashMap<&'static str, HashMap<Lang, &'static str>>> = 
     m.insert("create_tag_failed_prefix", [(Lang::ZhTw, "建立標籤失敗: "), (Lang::En, "Failed to create tag: ")].into_iter().collect());
     m.insert("screenshot_title", [(Lang::ZhTw, "截圖 - 選擇時間點"), (Lang::En, "Screenshot - Select Time")].into_iter().collect());
     m.insert("loading", [(Lang::ZhTw, "載入中..."), (Lang::En, "Loading...")].into_iter().collect());
-    m.insert("drag_timeline", [(Lang::ZhTw, "拖動時間軸預覽"), (Lang::En, "Drag timeline to preview")].into_iter().collect());
+    m.insert("preview_failed", [(Lang::ZhTw, "無法產生預覽"), (Lang::En, "Could not generate a preview.")].into_iter().collect());
+    m.insert("preview_file_missing", [(Lang::ZhTw, "找不到原始影片。請確認檔案位置或重新掃描資料夾。"), (Lang::En, "The source video is missing. Check its location or rescan the folder.")].into_iter().collect());
+    m.insert("preview_no_frame", [(Lang::ZhTw, "此時間點沒有可預覽的影格。"), (Lang::En, "No preview frame at this time.")].into_iter().collect());
+    m.insert("preview_ffmpeg_missing", [(Lang::ZhTw, "找不到 FFmpeg，無法產生預覽"), (Lang::En, "FFmpeg is required to generate a preview.")].into_iter().collect());
     m.insert("time_prefix", [(Lang::ZhTw, "時間: "), (Lang::En, "Time: ")].into_iter().collect());
     m.insert("timeline", [(Lang::ZhTw, "時間軸"), (Lang::En, "Timeline")].into_iter().collect());
     m.insert("current_prefix", [(Lang::ZhTw, "當前: "), (Lang::En, "Current: ")].into_iter().collect());
