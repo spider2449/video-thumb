@@ -198,17 +198,17 @@ impl MainWindow {
         // Tab bar
         egui::TopBottomPanel::top("tab_bar")
             .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    egui::ScrollArea::vertical()
-                        .drag_to_scroll(false)
-                        .show(ui, |ui| {
+                egui::ScrollArea::horizontal()
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
                             let tabs: Vec<(i64, String, bool)> = app.watched_paths.iter().map(|p| {
                                 (p.id, p.display_name.clone(), app.current_path_id == Some(p.id))
                             }).collect();
                             for &(ref path_id, ref display_name, selected) in &tabs {
                                 let button = Icon::Folder.labeled(ui, display_name.as_str()).selected(selected);
 
-                                if ui.add(button).clicked() {
+                                let response = ui.push_id(path_id, |ui| ui.add(button)).inner;
+                                if response.clicked() {
                                     app.current_path_id = Some(*path_id);
                                     app.selected_file_id = None;
                                     app.clear_texture_cache();
@@ -217,18 +217,20 @@ impl MainWindow {
                                     }
                                 }
 
-                                if selected
-                                    && ui.add(Icon::Close.button(ui)).on_hover_text(crate::lang::t(lang, "confirm_remove_path")).clicked() {
+                                response.context_menu(|ui| {
+                                    if ui.add(Icon::Trash.labeled(ui, crate::lang::t(lang, "delete"))).clicked() {
                                         app.remove_path_confirm = Some((*path_id, display_name.clone()));
+                                        ui.close_menu();
                                     }
+                                });
+                            }
+                            ui.separator();
+                            if ui.add(Icon::FolderPlus.button(ui)).on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
+                                app.show_add_path = true;
+                                app.reset_add_path_dialog();
                             }
                         });
-                    ui.separator();
-                    if ui.add(Icon::FolderPlus.button(ui)).on_hover_text(crate::lang::t(lang, "add_path")).clicked() {
-                        app.show_add_path = true;
-                        app.reset_add_path_dialog();
-                    }
-                });
+                    });
             });
 
         // Status bar
@@ -360,9 +362,13 @@ impl MainWindow {
                             if should_remove {
                                 app.watched_paths.retain(|p| p.id != path_id);
                                 app.files.remove(&path_id);
-                                app.current_path_id = app.watched_paths.first().map(|p| p.id);
-                                if let Some(new_id) = app.current_path_id {
-                                    app.load_files_for_path(new_id);
+                                if app.current_path_id == Some(path_id) {
+                                    app.current_path_id = app.watched_paths.first().map(|p| p.id);
+                                    app.selected_file_id = None;
+                                    app.clear_texture_cache();
+                                    if let Some(new_id) = app.current_path_id {
+                                        app.load_files_for_path(new_id);
+                                    }
                                 }
                             }
                             keep_open = false;
